@@ -1,6 +1,30 @@
 // lib/screens/new_game_screen.dart
 
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+class ParInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    if (newValue.text.isEmpty) {
+      return newValue;
+    }
+    if ("3456".contains(newValue.text)) {
+      return newValue;
+    }
+    return oldValue;
+  }
+}
+
+class HoleData {
+  String par = '';
+  String strokes = '';
+  String putts = '';
+  String fir = 'N/A';
+  String gir = 'N/A';
+}
 
 class NewGameScreen extends StatefulWidget {
   const NewGameScreen({super.key});
@@ -46,7 +70,6 @@ class _NewGameScreenState extends State<NewGameScreen> {
           ),
         ],
       ),
-      // We add resizeToAvoidBottomInset: false to prevent the UI from resizing when the keyboard appears.
       resizeToAvoidBottomInset: false,
       body: _screenViews.elementAt(_selectedIndex),
       bottomNavigationBar: BottomNavigationBar(
@@ -86,34 +109,95 @@ class GameEntryView extends StatefulWidget {
 }
 
 class _GameEntryViewState extends State<GameEntryView> {
-  int _currentHole = 1;
-  String? girValue = 'N/A';
-  String? firValue = 'N/A';
+  final List<HoleData> _roundData = List.generate(18, (_) => HoleData());
+  int _currentHoleIndex = 0;
+
+  late TextEditingController _courseNameController;
+  late TextEditingController _parController;
+  late TextEditingController _strokesController;
+  late TextEditingController _puttsController;
+
+  late FocusNode _parFocusNode;
+  late FocusNode _strokesFocusNode;
+  late FocusNode _puttsFocusNode;
+  Timer? _debounce;
+
+  @override
+  void initState() {
+    super.initState();
+    _courseNameController = TextEditingController();
+    _parController = TextEditingController();
+    _strokesController = TextEditingController();
+    _puttsController = TextEditingController();
+
+    _parFocusNode = FocusNode();
+    _strokesFocusNode = FocusNode();
+    _puttsFocusNode = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    _courseNameController.dispose();
+    _parController.dispose();
+    _strokesController.dispose();
+    _puttsController.dispose();
+
+    _parFocusNode.dispose();
+    _strokesFocusNode.dispose();
+    _puttsFocusNode.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _saveCurrentHoleData() {
+    final currentData = _roundData[_currentHoleIndex];
+    currentData.par = _parController.text;
+    currentData.strokes = _strokesController.text;
+    currentData.putts = _puttsController.text;
+    currentData.fir = firValue;
+    currentData.gir = girValue;
+  }
+
+  void _loadHoleData(int holeIndex) {
+    final holeData = _roundData[holeIndex];
+    _parController.text = holeData.par;
+    _strokesController.text = holeData.strokes;
+    _puttsController.text = holeData.putts;
+    firValue = holeData.fir;
+    girValue = holeData.gir;
+  }
 
   void _nextHole() {
-    if (_currentHole < 18) {
+    if (_currentHoleIndex < 17) {
+      _saveCurrentHoleData();
       setState(() {
-        _currentHole++;
+        _currentHoleIndex++;
+        _loadHoleData(_currentHoleIndex);
       });
     }
   }
 
   void _previousHole() {
-    if (_currentHole > 1) {
+    if (_currentHoleIndex > 0) {
+      _saveCurrentHoleData();
       setState(() {
-        _currentHole--;
+        _currentHoleIndex--;
+        _loadHoleData(_currentHoleIndex);
       });
     }
   }
 
+  String firValue = 'N/A';
+  String girValue = 'N/A';
+
   @override
   Widget build(BuildContext context) {
-    // We removed the SingleChildScrollView to create a fixed layout
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
           TextField(
+            controller: _courseNameController,
             decoration: InputDecoration(
               hintText: 'Enter Course Name',
               hintStyle: TextStyle(color: Colors.grey[600]),
@@ -128,16 +212,16 @@ class _GameEntryViewState extends State<GameEntryView> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              if (_currentHole > 1)
+              if (_currentHoleIndex > 0)
                 IconButton(
                     icon: const Icon(Icons.arrow_back_ios),
                     onPressed: _previousHole)
               else
                 const SizedBox(width: 48),
-              Text('Hole $_currentHole',
+              Text('Hole ${_currentHoleIndex + 1}',
                   style: const TextStyle(
                       fontSize: 22, fontWeight: FontWeight.bold)),
-              if (_currentHole < 18)
+              if (_currentHoleIndex < 17)
                 IconButton(
                     icon: const Icon(Icons.arrow_forward_ios),
                     onPressed: _nextHole)
@@ -146,25 +230,29 @@ class _GameEntryViewState extends State<GameEntryView> {
             ],
           ),
           const SizedBox(height: 8),
-          _buildInputRow(label: 'Par'),
-          _buildInputRow(label: 'Strokes'),
-          _buildInputRow(label: 'Putts'),
+          _buildInputRow(
+              label: 'Par',
+              controller: _parController,
+              focusNode: _parFocusNode),
+          _buildInputRow(
+              label: 'Strokes',
+              controller: _strokesController,
+              focusNode: _strokesFocusNode),
+          _buildInputRow(
+              label: 'Putts',
+              controller: _puttsController,
+              focusNode: _puttsFocusNode),
           const SizedBox(height: 16),
-
-          // Redesigned FIR/GIR controls
           _buildSegmentedControl('FIR', ['Yes', 'N/A', 'No'], firValue,
               (newValue) {
-            setState(() => firValue = newValue);
+            setState(() => firValue = newValue!);
           }),
           const SizedBox(height: 8),
           _buildSegmentedControl('GIR', ['Yes', 'N/A', 'No'], girValue,
               (newValue) {
-            setState(() => girValue = newValue);
+            setState(() => girValue = newValue!);
           }),
-
-          // Spacer pushes the ad to the bottom
           const Spacer(),
-
           Container(
             height: 50,
             width: double.infinity,
@@ -178,7 +266,67 @@ class _GameEntryViewState extends State<GameEntryView> {
     );
   }
 
-  Widget _buildInputRow({required String label}) {
+  // New, simpler helper widget that returns the correct border decoration
+  Widget _buildScoreIndicator() {
+    final int? par = int.tryParse(_parController.text);
+    final int? strokes = int.tryParse(_strokesController.text);
+
+    if (par == null || strokes == null || strokes == 0) {
+      return const SizedBox.shrink(); // Return an empty widget
+    }
+
+    final int score = strokes - par;
+    Color borderColor = Colors.transparent;
+    BoxShape shape = BoxShape.rectangle;
+    bool isDouble = false;
+
+    if (score == -1) {
+      // Birdie
+      borderColor = Colors.green;
+      shape = BoxShape.circle;
+    } else if (score <= -2) {
+      // Eagle
+      borderColor = Colors.green;
+      shape = BoxShape.circle;
+      isDouble = true;
+    } else if (score == 1) {
+      // Bogey
+      borderColor = Colors.red;
+    } else if (score >= 2) {
+      // Double Bogey
+      borderColor = Colors.red;
+      isDouble = true;
+    } else {
+      return const SizedBox.shrink(); // No indicator for Par
+    }
+
+    // This is the widget for a single outline
+    Widget singleBorder = Container(
+      decoration: BoxDecoration(
+        shape: shape,
+        border: Border.all(color: borderColor, width: 2.0),
+      ),
+    );
+
+    // If it's a double, we wrap the single border in another one
+    if (isDouble) {
+      return Container(
+        padding: const EdgeInsets.all(3.0), // Space between borders
+        decoration: BoxDecoration(
+          shape: shape,
+          border: Border.all(color: borderColor, width: 2.0),
+        ),
+        child: singleBorder,
+      );
+    }
+
+    return singleBorder;
+  }
+
+  Widget _buildInputRow(
+      {required String label,
+      required TextEditingController controller,
+      required FocusNode focusNode}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
@@ -191,14 +339,65 @@ class _GameEntryViewState extends State<GameEntryView> {
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 16),
+
+          // We use a Stack to layer the indicator ON TOP of the TextField
           SizedBox(
             width: 60,
-            child: const TextField(
-              textAlign: TextAlign.center,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(),
-              ),
-              keyboardType: TextInputType.number,
+            height: 48,
+            child: Stack(
+              children: [
+                // Layer 1: The TextField is always visible
+                TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.bold),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    if (label == 'Par') ParInputFormatter(),
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(
+                        label == 'Strokes' ? 2 : 1),
+                  ],
+                  onChanged: (value) {
+                    setState(() {});
+                    if (label == 'Par' && value.isNotEmpty) {
+                      _strokesFocusNode.requestFocus();
+                    } else if (label == 'Strokes') {
+                      _debounce?.cancel();
+                      if (value.isNotEmpty) {
+                        if (value == '1') {
+                          _debounce = Timer(const Duration(seconds: 1), () {
+                            if (mounted && _strokesController.text == '1') {
+                              _puttsFocusNode.requestFocus();
+                            }
+                          });
+                        } else {
+                          final int strokesVal = int.parse(value);
+                          if ((strokesVal >= 2 && strokesVal <= 9) ||
+                              (strokesVal >= 10 && strokesVal <= 19)) {
+                            _puttsFocusNode.requestFocus();
+                          }
+                        }
+                      }
+                    } else if (label == 'Putts' && value.isNotEmpty) {
+                      final int putts = int.parse(value);
+                      if (putts >= 1 && putts <= 9) {
+                        _puttsFocusNode.unfocus();
+                      }
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
+                // Layer 2: The score indicator is drawn on top
+                if (label == 'Strokes') _buildScoreIndicator(),
+              ],
             ),
           ),
         ],
@@ -206,7 +405,6 @@ class _GameEntryViewState extends State<GameEntryView> {
     );
   }
 
-  // Helper for the segmented controls is now a more compact Row
   Widget _buildSegmentedControl(String title, List<String> options,
       String? groupValue, ValueChanged<String?> onChanged) {
     return Row(

@@ -74,19 +74,10 @@ class _NewGameScreenState extends State<NewGameScreen> {
       appBar: AppBar(
         backgroundColor: Colors.green[700],
         foregroundColor: Colors.white,
-        title: RichText(
-          text: TextSpan(
-            children: [
-              TextSpan(
-                text: '${DateTime.now().month}/${DateTime.now().day}/${DateTime.now().year}',
-                style: const TextStyle(fontSize: 18, color: Colors.white, fontWeight: FontWeight.bold),
-              ),
-              TextSpan(
-                text: ' ${DateTime.now().hour.toString().padLeft(2, '0')}:${DateTime.now().minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(fontSize: 16, color: Colors.yellow, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
+        title: const Text(
+          'Golf Trainer',
+          style: TextStyle(
+              fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -120,6 +111,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
       ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
+        backgroundColor: Colors.green[700],
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
             icon: Icon(Icons.edit_note),
@@ -139,8 +131,8 @@ class _NewGameScreenState extends State<NewGameScreen> {
           ),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.green[800],
-        unselectedItemColor: Colors.grey,
+        selectedItemColor: Colors.white,
+        unselectedItemColor: Colors.white70,
         onTap: _onItemTapped,
       ),
     );
@@ -649,7 +641,8 @@ class _GameEntryViewState extends State<GameEntryView> {
 class ScorecardView extends StatelessWidget {
   final List<HoleData> roundData;
   final String courseName;
-  const ScorecardView({super.key, required this.roundData, this.courseName = ''});
+  const ScorecardView(
+      {super.key, required this.roundData, this.courseName = ''});
 
   Widget _buildCell({
     String text = '',
@@ -898,7 +891,7 @@ class ScorecardView extends StatelessWidget {
   Widget build(BuildContext context) {
     // Calculate running totals
     int outPar = 0, outScore = 0, inPar = 0, inScore = 0;
-    
+
     // Front nine totals
     for (int i = 0; i < 9; i++) {
       final par = int.tryParse(roundData[i].par) ?? 0;
@@ -906,7 +899,7 @@ class ScorecardView extends StatelessWidget {
       if (par > 0) outPar += par;
       if (score > 0) outScore += score;
     }
-    
+
     // Back nine totals
     for (int i = 9; i < 18; i++) {
       final par = int.tryParse(roundData[i].par) ?? 0;
@@ -914,11 +907,11 @@ class ScorecardView extends StatelessWidget {
       if (par > 0) inPar += par;
       if (score > 0) inScore += score;
     }
-    
+
     final totalPar = outPar + inPar;
     final totalScore = outScore + inScore;
     final totalToPar = totalScore > 0 ? totalScore - totalPar : 0;
-    
+
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -944,7 +937,7 @@ class ScorecardView extends StatelessWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-          
+
           // Scorecard grid
           Expanded(
             child: Row(
@@ -954,7 +947,7 @@ class ScorecardView extends StatelessWidget {
               ],
             ),
           ),
-          
+
           // Running score summary
           const SizedBox(height: 16),
           Container(
@@ -977,24 +970,33 @@ class ScorecardView extends StatelessWidget {
                   children: [
                     Column(
                       children: [
-                        const Text('Out', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('$outScore${outPar > 0 ? " (${outScore - outPar > 0 ? '+' : ''}${outScore - outPar})" : ""}'),
+                        const Text('Out',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                            '$outScore${outPar > 0 ? " (${outScore - outPar > 0 ? '+' : ''}${outScore - outPar})" : ""}'),
                       ],
                     ),
                     Column(
                       children: [
-                        const Text('In', style: TextStyle(fontWeight: FontWeight.bold)),
-                        Text('$inScore${inPar > 0 ? " (${inScore - inPar > 0 ? '+' : ''}${inScore - inPar})" : ""}'),
+                        const Text('In',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                            '$inScore${inPar > 0 ? " (${inScore - inPar > 0 ? '+' : ''}${inScore - inPar})" : ""}'),
                       ],
                     ),
                     Column(
                       children: [
-                        const Text('Total', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text('Total',
+                            style: TextStyle(fontWeight: FontWeight.bold)),
                         Text(
                           '$totalScore${totalPar > 0 ? " (${totalToPar > 0 ? '+' : ''}$totalToPar)" : ""}',
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
-                            color: totalToPar > 0 ? Colors.red : (totalToPar < 0 ? Colors.green : Colors.black),
+                            color: totalToPar > 0
+                                ? Colors.red
+                                : (totalToPar < 0
+                                    ? Colors.green
+                                    : Colors.black),
                           ),
                         ),
                       ],

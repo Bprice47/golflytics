@@ -7,7 +7,9 @@ import 'package:flutter/services.dart';
 class ParInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
-      TextEditingValue oldValue, TextEditingValue newValue) {
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
     if (newValue.text.isEmpty) {
       return newValue;
     }
@@ -67,17 +69,39 @@ class _NewGameScreenState extends State<NewGameScreen> {
       ),
       ScorecardView(roundData: _roundData, courseName: _courseName),
       const Center(child: Text('Stats View')),
-      const Center(child: Text('Calendar View')),
+      const Center(child: Text('Coming Soon!')),
     ];
 
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.green[700],
         foregroundColor: Colors.white,
-        title: const Text(
-          'Golf Trainer',
-          style: TextStyle(
-              fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
+        title: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Golf Trainer',
+              style: TextStyle(
+                fontSize: 22,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              () {
+                final now = DateTime.now();
+                final month = now.month.toString().padLeft(2, '0');
+                final day = now.day.toString().padLeft(2, '0');
+                final year = now.year.toString();
+                return '$month-$day-$year';
+              }(),
+              style: const TextStyle(
+                fontSize: 14,
+                color: Colors.white70,
+                fontWeight: FontWeight.normal,
+              ),
+            ),
+          ],
         ),
         actions: [
           IconButton(
@@ -85,10 +109,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
             icon: const CircleAvatar(
               backgroundColor: Colors.white,
               foregroundColor: Colors.green,
-              child: Text(
-                'BP',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+              child: Text('BP', style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -96,35 +117,25 @@ class _NewGameScreenState extends State<NewGameScreen> {
       resizeToAvoidBottomInset: false,
       body: Column(
         children: [
-          Expanded(
-            child: screenViews.elementAt(_selectedIndex),
-          ),
+          Expanded(child: screenViews.elementAt(_selectedIndex)),
           Container(
             height: 50,
             width: double.infinity,
             color: Colors.grey[300],
-            child: const Center(
-              child: Text('Banner Ad Placeholder'),
-            ),
-          )
+            child: const Center(child: Text('Banner Ad Placeholder')),
+          ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         backgroundColor: Colors.green[700],
         items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.edit_note),
-            label: 'Entry',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.edit_note), label: 'Entry'),
           BottomNavigationBarItem(
             icon: Icon(Icons.scoreboard),
             label: 'Scorecard',
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: 'Stats',
-          ),
+          BottomNavigationBarItem(icon: Icon(Icons.bar_chart), label: 'Stats'),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today),
             label: 'Calendar',
@@ -252,6 +263,7 @@ class _GameEntryViewState extends State<GameEntryView> {
         children: [
           TextField(
             controller: _courseNameController,
+            textAlign: TextAlign.center,
             decoration: InputDecoration(
               hintText: 'Enter Course Name',
               hintStyle: TextStyle(color: Colors.grey[600]),
@@ -266,86 +278,125 @@ class _GameEntryViewState extends State<GameEntryView> {
             },
           ),
           const SizedBox(height: 16),
+          // Centered hole navigation
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
               if (widget.currentHoleIndex > 0)
                 IconButton(
-                    icon: const Icon(Icons.arrow_back_ios),
-                    onPressed: _previousHole)
+                  icon: const Icon(Icons.arrow_back_ios),
+                  onPressed: _previousHole,
+                )
               else
                 const SizedBox(width: 48),
-              Text('Hole ${widget.currentHoleIndex + 1}',
-                  style: const TextStyle(
-                      fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(
+                'Hole ${widget.currentHoleIndex + 1}',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               if (widget.currentHoleIndex < 17)
                 IconButton(
-                    icon: const Icon(Icons.arrow_forward_ios),
-                    onPressed: _nextHole)
+                  icon: const Icon(Icons.arrow_forward_ios),
+                  onPressed: _nextHole,
+                )
               else
                 const SizedBox(width: 48),
             ],
           ),
-          const SizedBox(height: 8),
-          _buildInputRow(
-              label: 'Par',
-              controller: _parController,
-              focusNode: _parFocusNode),
-          _buildInputRow(
-              label: 'Strokes',
-              controller: _strokesController,
-              focusNode: _strokesFocusNode),
-          _buildInputRow(
-              label: 'Putts',
-              controller: _puttsController,
-              focusNode: _puttsFocusNode),
-          const SizedBox(height: 16),
-          _buildSegmentedControl('FIR', ['Yes', 'N/A', 'No'], firValue,
-              (newValue) {
-            setState(() => firValue = newValue!);
-          }),
-          const SizedBox(height: 8),
-          _buildSegmentedControl('GIR', ['Yes', 'N/A', 'No'], girValue,
-              (newValue) {
-            setState(() => girValue = newValue!);
-          }),
+          const SizedBox(height: 24),
+          // Centered input section
+          Column(
+            children: [
+              _buildInputRow(
+                label: 'Par',
+                controller: _parController,
+                focusNode: _parFocusNode,
+              ),
+              _buildInputRow(
+                label: 'Strokes',
+                controller: _strokesController,
+                focusNode: _strokesFocusNode,
+              ),
+              _buildInputRow(
+                label: 'Putts',
+                controller: _puttsController,
+                focusNode: _puttsFocusNode,
+              ),
+              const SizedBox(height: 16),
+              _buildSegmentedControl('FIR', ['Yes', 'N/A', 'No'], firValue, (
+                newValue,
+              ) {
+                setState(() => firValue = newValue!);
+              }),
+              const SizedBox(height: 8),
+              _buildSegmentedControl('GIR', ['Yes', 'N/A', 'No'], girValue, (
+                newValue,
+              ) {
+                setState(() => girValue = newValue!);
+              }),
+            ],
+          ),
         ],
       ),
     );
   }
 
   // --- THIS IS THE SIMPLIFIED AND CORRECTED INDICATOR LOGIC ---
-  Widget _buildInputRow(
-      {required String label,
-      required TextEditingController controller,
-      required FocusNode focusNode}) {
+  Widget _buildInputRow({
+    required String label,
+    required TextEditingController controller,
+    required FocusNode focusNode,
+  }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(label,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ),
-          const SizedBox(width: 16),
-          SizedBox(
-            width: 60,
-            height: 48,
-            child: (label == 'Strokes')
-                ? _buildStrokesInput()
-                : _buildRegularInput(controller, focusNode, label),
-          ),
-        ],
+      child: SizedBox(
+        height: 48,
+        child: Stack(
+          children: [
+            // Position input box at exact center
+            Center(
+              child: SizedBox(
+                width: 60,
+                height: 48,
+                child: (label == 'Strokes')
+                    ? _buildStrokesInput()
+                    : _buildRegularInput(controller, focusNode, label),
+              ),
+            ),
+            // Position label to the left with proper spacing
+            Positioned(
+              right: MediaQuery.of(context).size.width / 2 + 40,
+              top: 0,
+              bottom: 0,
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox(
+                  width: 80,
+                  child: Text(
+                    label,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   // Build regular input field for Par and Putts
   Widget _buildRegularInput(
-      TextEditingController controller, FocusNode focusNode, String label) {
+    TextEditingController controller,
+    FocusNode focusNode,
+    String label,
+  ) {
     return TextField(
       controller: controller,
       focusNode: focusNode,
@@ -481,9 +532,10 @@ class _GameEntryViewState extends State<GameEntryView> {
               focusNode: _strokesFocusNode,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.transparent),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.transparent,
+              ),
               keyboardType: TextInputType.number,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
@@ -520,9 +572,10 @@ class _GameEntryViewState extends State<GameEntryView> {
             child: Text(
               _strokesController.text,
               style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black),
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black,
+              ),
             ),
           ),
         ],
@@ -557,9 +610,10 @@ class _GameEntryViewState extends State<GameEntryView> {
                     focusNode: _strokesFocusNode,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.transparent),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.transparent,
+                    ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [
                       FilteringTextInputFormatter.digitsOnly,
@@ -596,9 +650,10 @@ class _GameEntryViewState extends State<GameEntryView> {
                   child: Text(
                     _strokesController.text,
                     style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.black),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
+                    ),
                   ),
                 ),
               ],
@@ -611,28 +666,44 @@ class _GameEntryViewState extends State<GameEntryView> {
     return indicator;
   }
 
-  Widget _buildSegmentedControl(String title, List<String> options,
-      String? groupValue, ValueChanged<String?> onChanged) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(title,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        SegmentedButton<String>(
-          segments: options
-              .map((value) =>
-                  ButtonSegment<String>(value: value, label: Text(value)))
-              .toList(),
-          selected: {groupValue ?? 'N/A'},
-          onSelectionChanged: (newSelection) {
-            onChanged(newSelection.first);
-          },
-          style: SegmentedButton.styleFrom(
-            selectedBackgroundColor: Colors.green,
-            selectedForegroundColor: Colors.white,
+  Widget _buildSegmentedControl(
+    String title,
+    List<String> options,
+    String? groupValue,
+    ValueChanged<String?> onChanged,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        children: [
+          // Title above the segmented control
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 8),
+          // Centered segmented control
+          SegmentedButton<String>(
+            segments: options
+                .map(
+                  (value) =>
+                      ButtonSegment<String>(value: value, label: Text(value)),
+                )
+                .toList(),
+            selected: {groupValue ?? 'N/A'},
+            onSelectionChanged: (newSelection) {
+              onChanged(newSelection.first);
+            },
+            style: SegmentedButton.styleFrom(
+              selectedBackgroundColor: Colors.green,
+              selectedForegroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -641,8 +712,11 @@ class _GameEntryViewState extends State<GameEntryView> {
 class ScorecardView extends StatelessWidget {
   final List<HoleData> roundData;
   final String courseName;
-  const ScorecardView(
-      {super.key, required this.roundData, this.courseName = ''});
+  const ScorecardView({
+    super.key,
+    required this.roundData,
+    this.courseName = '',
+  });
 
   Widget _buildCell({
     String text = '',
@@ -669,35 +743,41 @@ class ScorecardView extends StatelessWidget {
     return Column(
       children: [
         _buildCell(
-            text: 'Hole',
-            width: 75,
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.grey.shade200),
+          text: 'Hole',
+          width: 75,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.grey.shade200,
+        ),
         _buildCell(
-            text: 'Par',
-            width: 75,
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.grey.shade100),
+          text: 'Par',
+          width: 75,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.grey.shade100,
+        ),
         _buildCell(
-            text: 'Score',
-            width: 75,
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.grey.shade100),
+          text: 'Score',
+          width: 75,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.grey.shade100,
+        ),
         _buildCell(
-            text: 'Putts',
-            width: 75,
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.grey.shade100),
+          text: 'Putts',
+          width: 75,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.grey.shade100,
+        ),
         _buildCell(
-            text: 'FIR',
-            width: 75,
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.grey.shade100),
+          text: 'FIR',
+          width: 75,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.grey.shade100,
+        ),
         _buildCell(
-            text: 'GIR',
-            width: 75,
-            fontWeight: FontWeight.bold,
-            backgroundColor: Colors.grey.shade100),
+          text: 'GIR',
+          width: 75,
+          fontWeight: FontWeight.bold,
+          backgroundColor: Colors.grey.shade100,
+        ),
       ],
     );
   }
@@ -711,7 +791,9 @@ class ScorecardView extends StatelessWidget {
           _buildHeaderRow(),
           _buildDataRow(getValue: (hole) => hole.par),
           _buildDataRow(
-              getValue: (hole) => hole.strokes, showScoreIndicator: true),
+            getValue: (hole) => hole.strokes,
+            showScoreIndicator: true,
+          ),
           _buildDataRow(getValue: (hole) => hole.putts),
           _buildStatRow(getValue: (hole) => hole.fir),
           _buildStatRow(getValue: (hole) => hole.gir),
@@ -725,30 +807,40 @@ class ScorecardView extends StatelessWidget {
     for (int i = 1; i <= 9; i++) {
       cells.add(_buildCell(text: '$i', fontWeight: FontWeight.bold));
     }
-    cells.add(_buildCell(
+    cells.add(
+      _buildCell(
         text: 'Out',
         width: 60,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade200));
+        backgroundColor: Colors.grey.shade200,
+      ),
+    );
     for (int i = 10; i <= 18; i++) {
       cells.add(_buildCell(text: '$i', fontWeight: FontWeight.bold));
     }
-    cells.add(_buildCell(
+    cells.add(
+      _buildCell(
         text: 'In',
         width: 60,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade200));
-    cells.add(_buildCell(
+        backgroundColor: Colors.grey.shade200,
+      ),
+    );
+    cells.add(
+      _buildCell(
         text: 'Total',
         width: 70,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade300));
+        backgroundColor: Colors.grey.shade300,
+      ),
+    );
     return Row(children: cells);
   }
 
-  Widget _buildDataRow(
-      {required String Function(HoleData) getValue,
-      bool showScoreIndicator = false}) {
+  Widget _buildDataRow({
+    required String Function(HoleData) getValue,
+    bool showScoreIndicator = false,
+  }) {
     List<Widget> cells = [];
     List<int> frontNine = [];
     List<int> backNine = [];
@@ -756,36 +848,49 @@ class ScorecardView extends StatelessWidget {
     for (int i = 0; i < 9; i++) {
       final par = int.tryParse(roundData[i].par) ?? 0;
       final value = int.tryParse(getValue(roundData[i])) ?? 0;
-      cells.add(showScoreIndicator
-          ? _buildScoreCell(par, value)
-          : _buildCell(text: value == 0 ? '' : '$value'));
+      cells.add(
+        showScoreIndicator
+            ? _buildScoreCell(par, value)
+            : _buildCell(text: value == 0 ? '' : '$value'),
+      );
       if (value > 0) frontNine.add(value);
     }
-    cells.add(_buildCell(
+    cells.add(
+      _buildCell(
         text: '${frontNine.fold(0, (a, b) => a + b)}',
         width: 60,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade200));
+        backgroundColor: Colors.grey.shade200,
+      ),
+    );
 
     for (int i = 9; i < 18; i++) {
       final par = int.tryParse(roundData[i].par) ?? 0;
       final value = int.tryParse(getValue(roundData[i])) ?? 0;
-      cells.add(showScoreIndicator
-          ? _buildScoreCell(par, value)
-          : _buildCell(text: value == 0 ? '' : '$value'));
+      cells.add(
+        showScoreIndicator
+            ? _buildScoreCell(par, value)
+            : _buildCell(text: value == 0 ? '' : '$value'),
+      );
       if (value > 0) backNine.add(value);
     }
-    cells.add(_buildCell(
+    cells.add(
+      _buildCell(
         text: '${backNine.fold(0, (a, b) => a + b)}',
         width: 60,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade200));
-    cells.add(_buildCell(
+        backgroundColor: Colors.grey.shade200,
+      ),
+    );
+    cells.add(
+      _buildCell(
         text:
             '${frontNine.fold(0, (a, b) => a + b) + backNine.fold(0, (a, b) => a + b)}',
         width: 70,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade300));
+        backgroundColor: Colors.grey.shade300,
+      ),
+    );
 
     return Row(children: cells);
   }
@@ -842,10 +947,7 @@ class ScorecardView extends StatelessWidget {
     return _buildCell(
       child: Stack(
         alignment: Alignment.center,
-        children: [
-          scoreText,
-          if (indicator != null) indicator,
-        ],
+        children: [scoreText, if (indicator != null) indicator],
       ),
     );
   }
@@ -858,31 +960,42 @@ class ScorecardView extends StatelessWidget {
     for (int i = 0; i < 9; i++) {
       final value = getValue(roundData[i]);
       if (value == 'Yes') frontNineCount++;
-      cells.add(_buildCell(
-          text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A')));
+      cells.add(
+        _buildCell(text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A')),
+      );
     }
-    cells.add(_buildCell(
+    cells.add(
+      _buildCell(
         text: '$frontNineCount',
         width: 60,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade200));
+        backgroundColor: Colors.grey.shade200,
+      ),
+    );
 
     for (int i = 9; i < 18; i++) {
       final value = getValue(roundData[i]);
       if (value == 'Yes') backNineCount++;
-      cells.add(_buildCell(
-          text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A')));
+      cells.add(
+        _buildCell(text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A')),
+      );
     }
-    cells.add(_buildCell(
+    cells.add(
+      _buildCell(
         text: '$backNineCount',
         width: 60,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade200));
-    cells.add(_buildCell(
+        backgroundColor: Colors.grey.shade200,
+      ),
+    );
+    cells.add(
+      _buildCell(
         text: '${frontNineCount + backNineCount}',
         width: 70,
         fontWeight: FontWeight.bold,
-        backgroundColor: Colors.grey.shade300));
+        backgroundColor: Colors.grey.shade300,
+      ),
+    );
 
     return Row(children: cells);
   }
@@ -970,24 +1083,32 @@ class ScorecardView extends StatelessWidget {
                   children: [
                     Column(
                       children: [
-                        const Text('Out',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Out',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         Text(
-                            '$outScore${outPar > 0 ? " (${outScore - outPar > 0 ? '+' : ''}${outScore - outPar})" : ""}'),
+                          '$outScore${outPar > 0 ? " (${outScore - outPar > 0 ? '+' : ''}${outScore - outPar})" : ""}',
+                        ),
                       ],
                     ),
                     Column(
                       children: [
-                        const Text('In',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text(
+                          'In',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         Text(
-                            '$inScore${inPar > 0 ? " (${inScore - inPar > 0 ? '+' : ''}${inScore - inPar})" : ""}'),
+                          '$inScore${inPar > 0 ? " (${inScore - inPar > 0 ? '+' : ''}${inScore - inPar})" : ""}',
+                        ),
                       ],
                     ),
                     Column(
                       children: [
-                        const Text('Total',
-                            style: TextStyle(fontWeight: FontWeight.bold)),
+                        const Text(
+                          'Total',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         Text(
                           '$totalScore${totalPar > 0 ? " (${totalToPar > 0 ? '+' : ''}$totalToPar)" : ""}',
                           style: TextStyle(

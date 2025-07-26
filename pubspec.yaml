@@ -1,5 +1,6 @@
 name: golf_app_final
 description: A new Flutter project.
+version: 1.0.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

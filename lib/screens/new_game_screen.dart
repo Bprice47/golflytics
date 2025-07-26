@@ -183,6 +183,56 @@ class _GameEntryViewState extends State<GameEntryView> {
   String firValue = 'N/A';
   String girValue = 'N/A';
 
+  // Track pan gesture for better swipe detection on hole navigation
+  double _dragStartX = 0.0;
+  bool _isDragging = false;
+
+  void _handlePanStart(DragStartDetails details) {
+    _dragStartX = details.globalPosition.dx;
+    _isDragging = true;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    // Optional: Add visual feedback during drag if needed
+  }
+
+  void _handlePanEnd(DragEndDetails details) {
+    if (!_isDragging) return;
+
+    final double dragDistance = details.globalPosition.dx - _dragStartX;
+    final double minSwipeDistance = 30.0; // Minimum distance for a swipe
+    final double maxVelocity = 2000.0; // Maximum velocity to consider
+
+    // Check if this is a valid swipe gesture
+    bool isValidSwipe = false;
+    bool swipeRight = false;
+
+    // Method 1: Check drag distance
+    if (dragDistance.abs() > minSwipeDistance) {
+      isValidSwipe = true;
+      swipeRight = dragDistance > 0;
+    }
+    // Method 2: Check velocity (for quick swipes)
+    else if (details.primaryVelocity != null &&
+        details.primaryVelocity!.abs() > 150 &&
+        details.primaryVelocity!.abs() < maxVelocity) {
+      isValidSwipe = true;
+      swipeRight = details.primaryVelocity! > 0;
+    }
+
+    if (isValidSwipe) {
+      if (swipeRight && widget.currentHoleIndex > 0) {
+        // Swiped right - go to previous hole
+        _previousHole();
+      } else if (!swipeRight && widget.currentHoleIndex < 17) {
+        // Swiped left - go to next hole
+        _nextHole();
+      }
+    }
+
+    _isDragging = false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -256,89 +306,101 @@ class _GameEntryViewState extends State<GameEntryView> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          TextField(
-            controller: _courseNameController,
-            textAlign: TextAlign.center,
-            decoration: InputDecoration(
-              hintText: 'Enter Course Name',
-              hintStyle: TextStyle(color: Colors.grey[600]),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(8.0),
-              ),
-              filled: true,
-              fillColor: Colors.grey[200],
-            ),
-            onChanged: (value) {
-              widget.onCourseNameChanged?.call(value);
-            },
-          ),
-          const SizedBox(height: 16),
-          // Centered hole navigation
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return GestureDetector(
+      onPanStart: _handlePanStart,
+      onPanUpdate: _handlePanUpdate,
+      onPanEnd: _handlePanEnd,
+      behavior: HitTestBehavior.translucent,
+      child: Container(
+        width: double.infinity,
+        height: double.infinity,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (widget.currentHoleIndex > 0)
-                IconButton(
-                  icon: const Icon(Icons.arrow_back_ios),
-                  onPressed: _previousHole,
-                )
-              else
-                const SizedBox(width: 48),
-              Text(
-                'Hole ${widget.currentHoleIndex + 1}',
-                style: const TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+              TextField(
+                controller: _courseNameController,
+                textAlign: TextAlign.center,
+                decoration: InputDecoration(
+                  hintText: 'Enter Course Name',
+                  hintStyle: TextStyle(color: Colors.grey[600]),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[200],
                 ),
-              ),
-              if (widget.currentHoleIndex < 17)
-                IconButton(
-                  icon: const Icon(Icons.arrow_forward_ios),
-                  onPressed: _nextHole,
-                )
-              else
-                const SizedBox(width: 48),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Centered input section
-          Column(
-            children: [
-              _buildInputRow(
-                label: 'Par',
-                controller: _parController,
-                focusNode: _parFocusNode,
-              ),
-              _buildInputRow(
-                label: 'Strokes',
-                controller: _strokesController,
-                focusNode: _strokesFocusNode,
-              ),
-              _buildInputRow(
-                label: 'Putts',
-                controller: _puttsController,
-                focusNode: _puttsFocusNode,
+                onChanged: (value) {
+                  widget.onCourseNameChanged?.call(value);
+                },
               ),
               const SizedBox(height: 16),
-              _buildSegmentedControl('FIR', ['Yes', 'N/A', 'No'], firValue, (
-                newValue,
-              ) {
-                setState(() => firValue = newValue!);
-              }),
-              const SizedBox(height: 8),
-              _buildSegmentedControl('GIR', ['Yes', 'N/A', 'No'], girValue, (
-                newValue,
-              ) {
-                setState(() => girValue = newValue!);
-              }),
+              // Centered hole navigation
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  if (widget.currentHoleIndex > 0)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_back_ios),
+                      onPressed: _previousHole,
+                    )
+                  else
+                    const SizedBox(width: 48),
+                  Text(
+                    'Hole ${widget.currentHoleIndex + 1}',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (widget.currentHoleIndex < 17)
+                    IconButton(
+                      icon: const Icon(Icons.arrow_forward_ios),
+                      onPressed: _nextHole,
+                    )
+                  else
+                    const SizedBox(width: 48),
+                ],
+              ),
+              const SizedBox(height: 24),
+              // Centered input section
+              Column(
+                children: [
+                  _buildInputRow(
+                    label: 'Par',
+                    controller: _parController,
+                    focusNode: _parFocusNode,
+                  ),
+                  _buildInputRow(
+                    label: 'Strokes',
+                    controller: _strokesController,
+                    focusNode: _strokesFocusNode,
+                  ),
+                  _buildInputRow(
+                    label: 'Putts',
+                    controller: _puttsController,
+                    focusNode: _puttsFocusNode,
+                  ),
+                  const SizedBox(height: 16),
+                  _buildSegmentedControl('FIR', ['Yes', 'N/A', 'No'], firValue,
+                      (
+                    newValue,
+                  ) {
+                    setState(() => firValue = newValue!);
+                  }),
+                  const SizedBox(height: 8),
+                  _buildSegmentedControl('GIR', ['Yes', 'N/A', 'No'], girValue,
+                      (
+                    newValue,
+                  ) {
+                    setState(() => girValue = newValue!);
+                  }),
+                ],
+              ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1145,52 +1207,94 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   int _currentView = 0; // 0: Current Round, 1: Last Ten, 2: Lifetime
   int _selectedTab = 0; // 0: Course, 1: All (for Last Ten and Lifetime views)
 
+  // Track pan gesture for better swipe detection
+  double _dragStartX = 0.0;
+  bool _isDragging = false;
+
+  void _handlePanStart(DragStartDetails details) {
+    _dragStartX = details.globalPosition.dx;
+    _isDragging = true;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    // Optional: Add visual feedback during drag if needed
+  }
+
+  void _handlePanEnd(DragEndDetails details) {
+    if (!_isDragging) return;
+
+    final double dragDistance = details.globalPosition.dx - _dragStartX;
+    final double minSwipeDistance = 30.0; // Reduced for more sensitivity
+    final double maxVelocity = 2000.0; // Increased for faster swipes
+
+    // Check if this is a valid swipe gesture
+    bool isValidSwipe = false;
+    bool swipeRight = false;
+
+    // Method 1: Check drag distance (more forgiving)
+    if (dragDistance.abs() > minSwipeDistance) {
+      isValidSwipe = true;
+      swipeRight = dragDistance > 0;
+    }
+    // Method 2: Check velocity (for quick swipes)
+    else if (details.primaryVelocity != null &&
+        details.primaryVelocity!.abs() > 150 && // Lower threshold
+        details.primaryVelocity!.abs() < maxVelocity) {
+      isValidSwipe = true;
+      swipeRight = details.primaryVelocity! > 0;
+    }
+
+    if (isValidSwipe) {
+      if (swipeRight && _currentView > 0) {
+        // Swiped right - go to previous view
+        setState(() {
+          _currentView--;
+        });
+      } else if (!swipeRight && _currentView < 2) {
+        // Swiped left - go to next view
+        setState(() {
+          _currentView++;
+        });
+      }
+    }
+
+    _isDragging = false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         // Navigation header with arrows
         _buildNavigationHeader(),
-        // Content based on current view with swipe detection
+        // Content based on current view with improved swipe detection
         Expanded(
           child: GestureDetector(
-            onHorizontalDragEnd: (DragEndDetails details) {
-              // Detect swipe direction based on velocity
-              if (details.primaryVelocity != null) {
-                if (details.primaryVelocity! > 0) {
-                  // Swiped right - go to previous view
-                  if (_currentView > 0) {
-                    setState(() {
-                      _currentView--;
-                    });
-                  }
-                } else if (details.primaryVelocity! < 0) {
-                  // Swiped left - go to next view
-                  if (_currentView < 2) {
-                    setState(() {
-                      _currentView++;
-                    });
-                  }
-                }
-              }
-            },
-            child: _currentView == 0
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: _buildCurrentRoundStats(),
-                  )
-                : Column(
-                    children: [
-                      // Custom tabs: Course and All (only for Last Ten and Lifetime)
-                      _buildCustomTabs(),
-                      const SizedBox(height: 16),
-                      // Tab content
-                      Expanded(
-                        child: _buildTabContent(
-                            isCourseFocused: _selectedTab == 0),
-                      ),
-                    ],
-                  ),
+            onPanStart: _handlePanStart,
+            onPanUpdate: _handlePanUpdate,
+            onPanEnd: _handlePanEnd,
+            behavior: HitTestBehavior.translucent,
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              child: _currentView == 0
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                      child: _buildCurrentRoundStats(),
+                    )
+                  : Column(
+                      children: [
+                        // Custom tabs: Course and All (only for Last Ten and Lifetime)
+                        _buildCustomTabs(),
+                        const SizedBox(height: 16),
+                        // Tab content
+                        Expanded(
+                          child: _buildTabContent(
+                              isCourseFocused: _selectedTab == 0),
+                        ),
+                      ],
+                    ),
+            ),
           ),
         ),
       ],

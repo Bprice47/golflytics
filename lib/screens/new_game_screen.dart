@@ -68,7 +68,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
         onCourseNameChanged: _updateCourseName,
       ),
       ScorecardView(roundData: _roundData, courseName: _courseName),
-      const Center(child: Text('Stats View')),
+      StatsView(roundData: _roundData, courseName: _courseName),
       const Center(child: Text('Coming Soon!')),
     ];
 
@@ -1131,4 +1131,445 @@ class ScorecardView extends StatelessWidget {
       ),
     );
   }
+}
+
+// --- STATS VIEW ---
+class StatsView extends StatefulWidget {
+  final List<HoleData> roundData;
+  final String courseName;
+
+  const StatsView({
+    super.key,
+    required this.roundData,
+    this.courseName = '',
+  });
+
+  @override
+  State<StatsView> createState() => _StatsViewState();
+}
+
+class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
+  late PageController _pageController;
+  int _currentPage = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController();
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        // Page indicator dots
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildPageIndicator(0, 'Current\nRound'),
+              const SizedBox(width: 20),
+              _buildPageIndicator(1, 'Last\nTen'),
+              const SizedBox(width: 20),
+              _buildPageIndicator(2, 'Lifetime'),
+            ],
+          ),
+        ),
+        // Swipeable content
+        Expanded(
+          child: PageView(
+            controller: _pageController,
+            onPageChanged: (page) {
+              setState(() {
+                _currentPage = page;
+              });
+            },
+            children: [
+              _buildCurrentRoundPage(),
+              _buildLastTenPage(),
+              _buildLifetimePage(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPageIndicator(int pageIndex, String label) {
+    final isActive = pageIndex == _currentPage;
+    return GestureDetector(
+      onTap: () {
+        _pageController.animateToPage(
+          pageIndex,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeInOut,
+        );
+      },
+      child: Column(
+        children: [
+          Container(
+            width: 12,
+            height: 12,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isActive ? Colors.green[700] : Colors.grey[400],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              color: isActive ? Colors.green[700] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentRoundPage() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: _buildCurrentRoundStats(),
+    );
+  }
+
+  Widget _buildLastTenPage() {
+    return _buildHistoryPageWithTabs(
+      title: 'Last Ten Rounds',
+      subtitle: 'Your most recent 10 rounds',
+      icon: Icons.history,
+    );
+  }
+
+  Widget _buildLifetimePage() {
+    return _buildHistoryPageWithTabs(
+      title: 'Lifetime Statistics',
+      subtitle: 'All your rounds ever played',
+      icon: Icons.analytics,
+    );
+  }
+
+  Widget _buildHistoryPageWithTabs({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        children: [
+          // Tab bar
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16.0),
+            decoration: BoxDecoration(
+              color: Colors.grey[200],
+              borderRadius: BorderRadius.circular(8.0),
+            ),
+            child: TabBar(
+              dividerColor: Colors.transparent,
+              indicator: BoxDecoration(
+                color: Colors.green[700],
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              labelColor: Colors.white,
+              unselectedLabelColor: Colors.black,
+              labelStyle: const TextStyle(fontWeight: FontWeight.bold),
+              tabs: const [
+                Tab(text: 'Course'),
+                Tab(text: 'All'),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // Tab content
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildComingSoonContent(
+                  title: title,
+                  subtitle: '$subtitle\nFiltered by current course',
+                  icon: icon,
+                ),
+                _buildComingSoonContent(
+                  title: title,
+                  subtitle: '$subtitle\nAll courses combined',
+                  icon: icon,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComingSoonContent({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 64,
+            color: Colors.grey,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Coming soon!',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.green[700],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCurrentRoundStats() {
+    // Calculate current round statistics
+    int totalStrokes = 0;
+    int totalPar = 0;
+    int holesPlayed = 0;
+    int birdies = 0;
+    int eagles = 0;
+    int pars = 0;
+    int bogeys = 0;
+    int doubleBogeys = 0;
+    int holesInOne = 0; // Added holes in one
+    int firHits = 0;
+    int girHits = 0;
+    int totalPutts = 0;
+    int firAttempts = 0;
+    int girAttempts = 0;
+
+    for (final hole in widget.roundData) {
+      final par = int.tryParse(hole.par);
+      final strokes = int.tryParse(hole.strokes);
+      final putts = int.tryParse(hole.putts);
+
+      if (par != null && strokes != null && strokes > 0) {
+        totalPar += par;
+        totalStrokes += strokes;
+        holesPlayed++;
+
+        // Check for hole in one
+        if (strokes == 1) {
+          holesInOne++;
+        }
+
+        final diff = strokes - par;
+        if (diff <= -2) {
+          eagles++;
+        } else if (diff == -1) {
+          birdies++;
+        } else if (diff == 0) {
+          pars++;
+        } else if (diff == 1) {
+          bogeys++;
+        } else if (diff >= 2) {
+          doubleBogeys++;
+        }
+      }
+
+      if (hole.fir != 'N/A') {
+        firAttempts++;
+        if (hole.fir == 'Yes') firHits++;
+      }
+
+      if (hole.gir != 'N/A') {
+        girAttempts++;
+        if (hole.gir == 'Yes') girHits++;
+      }
+
+      if (putts != null && putts > 0) {
+        totalPutts += putts;
+      }
+    }
+
+    final double scoring = holesPlayed > 0 ? totalStrokes / holesPlayed : 0.0;
+    final double putting = holesPlayed > 0 ? totalPutts / holesPlayed : 0.0;
+    final double firPercentage =
+        firAttempts > 0 ? (firHits / firAttempts) * 100 : 0.0;
+    final double girPercentage =
+        girAttempts > 0 ? (girHits / girAttempts) * 100 : 0.0;
+
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.courseName.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12.0),
+              margin: const EdgeInsets.only(bottom: 16.0),
+              decoration: BoxDecoration(
+                color: Colors.green[700],
+                borderRadius: BorderRadius.circular(8.0),
+              ),
+              child: Text(
+                widget.courseName,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+          // Score Summary
+          _buildStatCard(
+            title: 'Score Summary',
+            stats: [
+              StatItem('Holes Played', '$holesPlayed/18'),
+              StatItem('Total Strokes', '$totalStrokes'),
+              StatItem('Total Par', '$totalPar'),
+              StatItem(
+                  'Score to Par',
+                  totalStrokes > 0
+                      ? '${totalStrokes - totalPar > 0 ? '+' : ''}${totalStrokes - totalPar}'
+                      : '0'),
+              StatItem('Scoring Average',
+                  holesPlayed > 0 ? scoring.toStringAsFixed(2) : '0.00'),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Hole Performance
+          _buildStatCard(
+            title: 'Hole Performance',
+            stats: [
+              StatItem('Holes in One', '$holesInOne'), // Added holes in one at the top
+              StatItem('Eagles+', '$eagles'),
+              StatItem('Birdies', '$birdies'),
+              StatItem('Pars', '$pars'),
+              StatItem('Bogeys', '$bogeys'),
+              StatItem('Double+', '$doubleBogeys'),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Course Management
+          _buildStatCard(
+            title: 'Course Management',
+            stats: [
+              StatItem('Fairways Hit', '$firHits/$firAttempts'),
+              StatItem(
+                  'FIR %',
+                  firAttempts > 0
+                      ? '${firPercentage.toStringAsFixed(1)}%'
+                      : '0.0%'),
+              StatItem('Greens Hit', '$girHits/$girAttempts'),
+              StatItem(
+                  'GIR %',
+                  girAttempts > 0
+                      ? '${girPercentage.toStringAsFixed(1)}%'
+                      : '0.0%'),
+              StatItem('Total Putts', '$totalPutts'),
+              StatItem('Putting Avg',
+                  holesPlayed > 0 ? putting.toStringAsFixed(2) : '0.00'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(
+      {required String title, required List<StatItem> stats}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8.0),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...stats.map((stat) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      stat.label,
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    Text(
+                      stat.value,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class StatItem {
+  final String label;
+  final String value;
+
+  StatItem(this.label, this.value);
 }

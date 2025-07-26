@@ -730,8 +730,7 @@ class ScorecardView extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade400, width: 1.0),
       ),
       child: Center(
-        child:
-            child ??
+        child: child ??
             Text(text, style: TextStyle(fontWeight: fontWeight, fontSize: 16)),
       ),
     );
@@ -1114,8 +1113,8 @@ class ScorecardView extends StatelessWidget {
                             color: totalToPar > 0
                                 ? Colors.red
                                 : (totalToPar < 0
-                                      ? Colors.green
-                                      : Colors.black),
+                                    ? Colors.green
+                                    : Colors.black),
                           ),
                         ),
                       ],
@@ -1143,169 +1142,227 @@ class StatsView extends StatefulWidget {
 }
 
 class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
-  late PageController _pageController;
-  int _currentPage = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _pageController = PageController();
-  }
-
-  @override
-  void dispose() {
-    _pageController.dispose();
-    super.dispose();
-  }
+  int _currentView = 0; // 0: Current Round, 1: Last Ten, 2: Lifetime
+  int _selectedTab = 0; // 0: Course, 1: All (for Last Ten and Lifetime views)
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        // Page indicator dots
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildPageIndicator(0, 'Current\nRound'),
-              const SizedBox(width: 20),
-              _buildPageIndicator(1, 'Last\nTen'),
-              const SizedBox(width: 20),
-              _buildPageIndicator(2, 'Lifetime'),
-            ],
-          ),
-        ),
-        // Swipeable content
+        // Navigation header with arrows
+        _buildNavigationHeader(),
+        // Content based on current view with swipe detection
         Expanded(
-          child: PageView(
-            controller: _pageController,
-            onPageChanged: (page) {
-              setState(() {
-                _currentPage = page;
-              });
+          child: GestureDetector(
+            onHorizontalDragEnd: (DragEndDetails details) {
+              // Detect swipe direction based on velocity
+              if (details.primaryVelocity != null) {
+                if (details.primaryVelocity! > 0) {
+                  // Swiped right - go to previous view
+                  if (_currentView > 0) {
+                    setState(() {
+                      _currentView--;
+                    });
+                  }
+                } else if (details.primaryVelocity! < 0) {
+                  // Swiped left - go to next view
+                  if (_currentView < 2) {
+                    setState(() {
+                      _currentView++;
+                    });
+                  }
+                }
+              }
             },
-            children: [
-              _buildCurrentRoundPage(),
-              _buildLastTenPage(),
-              _buildLifetimePage(),
-            ],
+            child: _currentView == 0
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: _buildCurrentRoundStats(),
+                  )
+                : Column(
+                    children: [
+                      // Custom tabs: Course and All (only for Last Ten and Lifetime)
+                      _buildCustomTabs(),
+                      const SizedBox(height: 16),
+                      // Tab content
+                      Expanded(
+                        child: _buildTabContent(
+                            isCourseFocused: _selectedTab == 0),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildPageIndicator(int pageIndex, String label) {
-    final isActive = pageIndex == _currentPage;
-    return GestureDetector(
-      onTap: () {
-        _pageController.animateToPage(
-          pageIndex,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      },
-      child: Column(
+  Widget _buildNavigationHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Container(
-            width: 12,
-            height: 12,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isActive ? Colors.green[700] : Colors.grey[400],
-            ),
-          ),
-          const SizedBox(height: 8),
+          // Left arrow (only show for Last Ten and Lifetime)
+          _currentView > 0
+              ? IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentView--;
+                    });
+                  },
+                  icon: const Icon(Icons.arrow_back_ios, color: Colors.green),
+                )
+              : const SizedBox(width: 48),
+
+          // Current view title
           Text(
-            label,
-            textAlign: TextAlign.center,
+            _getCurrentViewTitle(),
             style: TextStyle(
-              fontSize: 12,
-              fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              color: isActive ? Colors.green[700] : Colors.grey[600],
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.green[700],
             ),
           ),
+
+          // Right arrow (only show for Current Round and Last Ten)
+          _currentView < 2
+              ? IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentView++;
+                    });
+                  },
+                  icon:
+                      const Icon(Icons.arrow_forward_ios, color: Colors.green),
+                )
+              : const SizedBox(width: 48),
         ],
       ),
     );
   }
 
-  Widget _buildCurrentRoundPage() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: _buildCurrentRoundStats(),
-    );
-  }
-
-  Widget _buildLastTenPage() {
-    return _buildHistoryPageWithTabs(
-      title: 'Last Ten Rounds',
-      subtitle: 'Your most recent 10 rounds',
-      icon: Icons.history,
-    );
-  }
-
-  Widget _buildLifetimePage() {
-    return _buildHistoryPageWithTabs(
-      title: 'Lifetime Statistics',
-      subtitle: 'All your rounds ever played',
-      icon: Icons.analytics,
-    );
-  }
-
-  Widget _buildHistoryPageWithTabs({
-    required String title,
-    required String subtitle,
-    required IconData icon,
-  }) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
+  Widget _buildCustomTabs() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Row(
         children: [
-          // Tab bar
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8.0),
-            ),
-            child: TabBar(
-              dividerColor: Colors.transparent,
-              indicator: BoxDecoration(
-                color: Colors.green[700],
-                borderRadius: BorderRadius.circular(8.0),
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                setState(() {
+                  _selectedTab = 0;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                decoration: BoxDecoration(
+                  color:
+                      _selectedTab == 0 ? Colors.green[700] : Colors.grey[200],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(8.0),
+                    bottomLeft: Radius.circular(8.0),
+                  ),
+                  border: Border.all(
+                    color: _selectedTab == 0
+                        ? Colors.green[700]!
+                        : Colors.grey[300]!,
+                    width: 1.0,
+                  ),
+                ),
+                child: Text(
+                  'Course',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _selectedTab == 0 ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ),
-              labelColor: Colors.white,
-              unselectedLabelColor: Colors.black,
-              labelStyle: const TextStyle(fontWeight: FontWeight.bold),
-              tabs: const [
-                Tab(text: 'Course'),
-                Tab(text: 'All'),
-              ],
             ),
           ),
-          const SizedBox(height: 16),
-          // Tab content
           Expanded(
-            child: TabBarView(
-              children: [
-                _buildComingSoonContent(
-                  title: title,
-                  subtitle: '$subtitle\nFiltered by current course',
-                  icon: icon,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () {
+                setState(() {
+                  _selectedTab = 1;
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 12.0),
+                decoration: BoxDecoration(
+                  color:
+                      _selectedTab == 1 ? Colors.green[700] : Colors.grey[200],
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(8.0),
+                    bottomRight: Radius.circular(8.0),
+                  ),
+                  border: Border.all(
+                    color: _selectedTab == 1
+                        ? Colors.green[700]!
+                        : Colors.grey[300]!,
+                    width: 1.0,
+                  ),
                 ),
-                _buildComingSoonContent(
-                  title: title,
-                  subtitle: '$subtitle\nAll courses combined',
-                  icon: icon,
+                child: Text(
+                  'All',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: _selectedTab == 1 ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
                 ),
-              ],
+              ),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _getCurrentViewTitle() {
+    switch (_currentView) {
+      case 0:
+        return 'Current Round';
+      case 1:
+        return 'Last Ten';
+      case 2:
+        return 'Lifetime';
+      default:
+        return 'Current Round';
+    }
+  }
+
+  Widget _buildTabContent({required bool isCourseFocused}) {
+    // This method is only called for Last Ten and Lifetime views (not Current Round)
+    switch (_currentView) {
+      case 1:
+        return _buildComingSoonContent(
+          title: 'Last Ten Rounds',
+          subtitle: isCourseFocused
+              ? 'Your most recent 10 rounds\nFiltered by current course'
+              : 'Your most recent 10 rounds\nAll courses combined',
+          icon: Icons.history,
+        );
+      case 2:
+        return _buildComingSoonContent(
+          title: 'Lifetime Statistics',
+          subtitle: isCourseFocused
+              ? 'All your rounds ever played\nFiltered by current course'
+              : 'All your rounds ever played\nAll courses combined',
+          icon: Icons.analytics,
+        );
+      default:
+        return _buildComingSoonContent(
+          title: 'Statistics',
+          subtitle: 'Coming soon!',
+          icon: Icons.analytics,
+        );
+    }
   }
 
   Widget _buildComingSoonContent({
@@ -1411,12 +1468,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
     final double scoring = holesPlayed > 0 ? totalStrokes / holesPlayed : 0.0;
     final double putting = holesPlayed > 0 ? totalPutts / holesPlayed : 0.0;
-    final double firPercentage = firAttempts > 0
-        ? (firHits / firAttempts) * 100
-        : 0.0;
-    final double girPercentage = girAttempts > 0
-        ? (girHits / girAttempts) * 100
-        : 0.0;
+    final double firPercentage =
+        firAttempts > 0 ? (firHits / firAttempts) * 100 : 0.0;
+    final double girPercentage =
+        girAttempts > 0 ? (girHits / girAttempts) * 100 : 0.0;
 
     return SingleChildScrollView(
       child: Column(

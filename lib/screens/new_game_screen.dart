@@ -679,10 +679,7 @@ class _GameEntryViewState extends State<GameEntryView> {
           // Title above the segmented control
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           // Centered segmented control
@@ -733,7 +730,8 @@ class ScorecardView extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade400, width: 1.0),
       ),
       child: Center(
-        child: child ??
+        child:
+            child ??
             Text(text, style: TextStyle(fontWeight: fontWeight, fontSize: 16)),
       ),
     );
@@ -1116,8 +1114,8 @@ class ScorecardView extends StatelessWidget {
                             color: totalToPar > 0
                                 ? Colors.red
                                 : (totalToPar < 0
-                                    ? Colors.green
-                                    : Colors.black),
+                                      ? Colors.green
+                                      : Colors.black),
                           ),
                         ),
                       ],
@@ -1138,11 +1136,7 @@ class StatsView extends StatefulWidget {
   final List<HoleData> roundData;
   final String courseName;
 
-  const StatsView({
-    super.key,
-    required this.roundData,
-    this.courseName = '',
-  });
+  const StatsView({super.key, required this.roundData, this.courseName = ''});
 
   @override
   State<StatsView> createState() => _StatsViewState();
@@ -1323,11 +1317,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            icon,
-            size: 64,
-            color: Colors.grey,
-          ),
+          Icon(icon, size: 64, color: Colors.grey),
           const SizedBox(height: 16),
           Text(
             title,
@@ -1342,10 +1332,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           Text(
             subtitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: const TextStyle(fontSize: 16, color: Colors.grey),
           ),
           const SizedBox(height: 16),
           Text(
@@ -1424,10 +1411,12 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
     final double scoring = holesPlayed > 0 ? totalStrokes / holesPlayed : 0.0;
     final double putting = holesPlayed > 0 ? totalPutts / holesPlayed : 0.0;
-    final double firPercentage =
-        firAttempts > 0 ? (firHits / firAttempts) * 100 : 0.0;
-    final double girPercentage =
-        girAttempts > 0 ? (girHits / girAttempts) * 100 : 0.0;
+    final double firPercentage = firAttempts > 0
+        ? (firHits / firAttempts) * 100
+        : 0.0;
+    final double girPercentage = girAttempts > 0
+        ? (girHits / girAttempts) * 100
+        : 0.0;
 
     return SingleChildScrollView(
       child: Column(
@@ -1461,12 +1450,15 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
               StatItem('Total Strokes', '$totalStrokes'),
               StatItem('Total Par', '$totalPar'),
               StatItem(
-                  'Score to Par',
-                  totalStrokes > 0
-                      ? '${totalStrokes - totalPar > 0 ? '+' : ''}${totalStrokes - totalPar}'
-                      : '0'),
-              StatItem('Scoring Average',
-                  holesPlayed > 0 ? scoring.toStringAsFixed(2) : '0.00'),
+                'Score to Par',
+                totalStrokes > 0
+                    ? '${totalStrokes - totalPar > 0 ? '+' : ''}${totalStrokes - totalPar}'
+                    : '0',
+              ),
+              StatItem(
+                'Scoring Average',
+                holesPlayed > 0 ? scoring.toStringAsFixed(2) : '0.00',
+              ),
             ],
           ),
 
@@ -1476,7 +1468,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
           _buildStatCard(
             title: 'Hole Performance',
             stats: [
-              StatItem('Holes in One', '$holesInOne'), // Added holes in one at the top
+              StatItem(
+                'Holes in One',
+                '$holesInOne',
+              ), // Added holes in one at the top
               StatItem('Eagles+', '$eagles'),
               StatItem('Birdies', '$birdies'),
               StatItem('Pars', '$pars'),
@@ -1493,19 +1488,23 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
             stats: [
               StatItem('Fairways Hit', '$firHits/$firAttempts'),
               StatItem(
-                  'FIR %',
-                  firAttempts > 0
-                      ? '${firPercentage.toStringAsFixed(1)}%'
-                      : '0.0%'),
+                'FIR %',
+                firAttempts > 0
+                    ? '${firPercentage.toStringAsFixed(1)}%'
+                    : '0.0%',
+              ),
               StatItem('Greens Hit', '$girHits/$girAttempts'),
               StatItem(
-                  'GIR %',
-                  girAttempts > 0
-                      ? '${girPercentage.toStringAsFixed(1)}%'
-                      : '0.0%'),
+                'GIR %',
+                girAttempts > 0
+                    ? '${girPercentage.toStringAsFixed(1)}%'
+                    : '0.0%',
+              ),
               StatItem('Total Putts', '$totalPutts'),
-              StatItem('Putting Avg',
-                  holesPlayed > 0 ? putting.toStringAsFixed(2) : '0.00'),
+              StatItem(
+                'Putting Avg',
+                holesPlayed > 0 ? putting.toStringAsFixed(2) : '0.00',
+              ),
             ],
           ),
         ],
@@ -1513,8 +1512,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildStatCard(
-      {required String title, required List<StatItem> stats}) {
+  Widget _buildStatCard({
+    required String title,
+    required List<StatItem> stats,
+  }) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16.0),
@@ -1536,31 +1537,27 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         children: [
           Text(
             title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 12),
-          ...stats.map((stat) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      stat.label,
-                      style: const TextStyle(fontSize: 16),
+          ...stats.map(
+            (stat) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(stat.label, style: const TextStyle(fontSize: 16)),
+                  Text(
+                    stat.value,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                    Text(
-                      stat.value,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              )),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
     );

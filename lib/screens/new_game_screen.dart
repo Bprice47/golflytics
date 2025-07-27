@@ -80,7 +80,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Text(
-              'Golf Trainer',
+              'Golflytics',
               style: TextStyle(
                 fontSize: 22,
                 color: Colors.white,
@@ -383,19 +383,23 @@ class _GameEntryViewState extends State<GameEntryView> {
                     focusNode: _puttsFocusNode,
                   ),
                   const SizedBox(height: 16),
-                  _buildSegmentedControl('FIR', ['Yes', 'N/A', 'No'], firValue,
-                      (
-                    newValue,
-                  ) {
-                    setState(() => firValue = newValue!);
-                  }),
+                  _buildSegmentedControl(
+                    'FIR',
+                    ['Yes', 'N/A', 'No'],
+                    firValue,
+                    (newValue) {
+                      setState(() => firValue = newValue!);
+                    },
+                  ),
                   const SizedBox(height: 8),
-                  _buildSegmentedControl('GIR', ['Yes', 'N/A', 'No'], girValue,
-                      (
-                    newValue,
-                  ) {
-                    setState(() => girValue = newValue!);
-                  }),
+                  _buildSegmentedControl(
+                    'GIR',
+                    ['Yes', 'N/A', 'No'],
+                    girValue,
+                    (newValue) {
+                      setState(() => girValue = newValue!);
+                    },
+                  ),
                 ],
               ),
             ],
@@ -1290,7 +1294,8 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                         // Tab content
                         Expanded(
                           child: _buildTabContent(
-                              isCourseFocused: _selectedTab == 0),
+                            isCourseFocused: _selectedTab == 0,
+                          ),
                         ),
                       ],
                     ),
@@ -1337,8 +1342,10 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                       _currentView++;
                     });
                   },
-                  icon:
-                      const Icon(Icons.arrow_forward_ios, color: Colors.green),
+                  icon: const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.green,
+                  ),
                 )
               : const SizedBox(width: 48),
         ],

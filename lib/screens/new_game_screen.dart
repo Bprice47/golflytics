@@ -3,6 +3,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../services/storage_service.dart';
+import '../models/round.dart';
 
 class ParInputFormatter extends TextInputFormatter {
   @override
@@ -29,7 +31,10 @@ class HoleData {
 }
 
 class NewGameScreen extends StatefulWidget {
-  const NewGameScreen({super.key});
+  final bool resumeRound;
+  final SavedCourse? savedCourse;
+
+  const NewGameScreen({super.key, this.resumeRound = false, this.savedCourse});
 
   @override
   State<NewGameScreen> createState() => _NewGameScreenState();
@@ -41,6 +46,42 @@ class _NewGameScreenState extends State<NewGameScreen> {
   final List<HoleData> _roundData = List.generate(18, (_) => HoleData());
   int _currentHoleIndex = 0;
   String _courseName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.resumeRound) {
+      _loadSavedRound();
+    } else if (widget.savedCourse != null) {
+      _loadSavedCourse();
+    }
+  }
+
+  Future<void> _loadSavedRound() async {
+    final savedRound = await StorageService.getCurrentRound();
+    if (savedRound != null) {
+      setState(() {
+        _roundData.clear();
+        _roundData.addAll(savedRound['roundData'] as List<HoleData>);
+        _courseName = savedRound['courseName'] as String;
+        _currentHoleIndex = savedRound['currentHoleIndex'] as int;
+      });
+    }
+  }
+
+  void _loadSavedCourse() {
+    if (widget.savedCourse != null) {
+      setState(() {
+        _courseName = widget.savedCourse!.name;
+        // Pre-populate pars for all 18 holes
+        for (int i = 0; i < 18; i++) {
+          if (i < widget.savedCourse!.pars.length) {
+            _roundData[i].par = widget.savedCourse!.pars[i].toString();
+          }
+        }
+      });
+    }
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -60,16 +101,23 @@ class _NewGameScreenState extends State<NewGameScreen> {
       GameEntryView(
         roundData: _roundData,
         currentHoleIndex: _currentHoleIndex,
+        courseName: _courseName, // NEW: Pass current course name
         onHoleChanged: (newIndex) {
           setState(() {
             _currentHoleIndex = newIndex;
           });
         },
         onCourseNameChanged: _updateCourseName,
+        onNavigateToStats: () {
+          // NEW: Navigate to stats tab when user saves round
+          setState(() {
+            _selectedIndex = 2; // Stats tab
+          });
+        },
       ),
       ScorecardView(roundData: _roundData, courseName: _courseName),
       StatsView(roundData: _roundData, courseName: _courseName),
-      const Center(child: Text('Coming Soon!')),
+      CalendarView(), // Restored Calendar tab
     ];
 
     return Scaffold(
@@ -150,12 +198,14 @@ class _NewGameScreenState extends State<NewGameScreen> {
   }
 }
 
-// --- GAME ENTRY VIEW ---
+// --- ROUND ENTRY VIEW ---
 class GameEntryView extends StatefulWidget {
   final List<HoleData> roundData;
   final int currentHoleIndex;
   final ValueChanged<int> onHoleChanged;
   final ValueChanged<String>? onCourseNameChanged;
+  final String courseName; // NEW: Current course name
+  final VoidCallback? onNavigateToStats; // NEW: Callback to navigate to stats
 
   const GameEntryView({
     super.key,
@@ -163,6 +213,8 @@ class GameEntryView extends StatefulWidget {
     required this.currentHoleIndex,
     required this.onHoleChanged,
     this.onCourseNameChanged,
+    this.courseName = '', // NEW: Default empty string
+    this.onNavigateToStats, // NEW: Optional callback
   });
 
   @override
@@ -246,6 +298,15 @@ class _GameEntryViewState extends State<GameEntryView> {
     _puttsFocusNode = FocusNode();
 
     _loadHoleData(widget.currentHoleIndex);
+
+    // NEW: Set up course name listener to persist changes
+    _courseNameController.addListener(() {
+      if (widget.onCourseNameChanged != null) {
+        widget.onCourseNameChanged!(_courseNameController.text);
+      }
+      // Auto-save when course name changes
+      _autoSaveCurrentRound();
+    });
   }
 
   @override
@@ -277,6 +338,17 @@ class _GameEntryViewState extends State<GameEntryView> {
     currentData.putts = _puttsController.text;
     currentData.fir = firValue;
     currentData.gir = girValue;
+
+    // Auto-save current round progress
+    _autoSaveCurrentRound();
+  }
+
+  Future<void> _autoSaveCurrentRound() async {
+    await StorageService.saveCurrentRound(
+      widget.roundData,
+      widget.courseName,
+      widget.currentHoleIndex,
+    );
   }
 
   void _loadHoleData(int holeIndex) {
@@ -284,6 +356,12 @@ class _GameEntryViewState extends State<GameEntryView> {
     _parController.text = holeData.par;
     _strokesController.text = holeData.strokes;
     _puttsController.text = holeData.putts;
+
+    // NEW: Preserve course name when navigating between holes
+    if (widget.courseName.isNotEmpty && _courseNameController.text.isEmpty) {
+      _courseNameController.text = widget.courseName;
+    }
+
     setState(() {
       firValue = holeData.fir;
       girValue = holeData.gir;
@@ -294,6 +372,103 @@ class _GameEntryViewState extends State<GameEntryView> {
     if (widget.currentHoleIndex < 17) {
       _saveCurrentHoleData();
       widget.onHoleChanged(widget.currentHoleIndex + 1);
+    } else if (widget.currentHoleIndex == 17) {
+      // On hole 18, show save round option
+      _saveCurrentHoleData();
+      _showRoundCompleteDialog();
+    }
+  }
+
+  // NEW: Show dialog when round is complete
+  void _showRoundCompleteDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('🏌️ Round Complete!'),
+          content: const Text(
+            'Congratulations on completing your round!\n\nWould you like to save this round for your records?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Not Now'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _saveRoundFromEntry();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[700],
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Save Round'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // NEW: Save round from entry screen
+  Future<void> _saveRoundFromEntry() async {
+    try {
+      final savedRound = StorageService.convertToSavedRound(
+        widget.roundData,
+        _courseNameController.text.isEmpty
+            ? 'Unnamed Course'
+            : _courseNameController.text,
+      );
+
+      final success = await StorageService.saveRound(savedRound);
+
+      // Clear the current round in progress since it's now completed
+      if (success) {
+        await StorageService.clearCurrentRound();
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(success
+                ? '✅ Round saved! Check out your stats in the Stats tab.'
+                : '❌ Failed to save round'),
+            backgroundColor: success ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 4),
+            action: success
+                ? SnackBarAction(
+                    label: 'View Stats',
+                    textColor: Colors.white,
+                    onPressed: () {
+                      // Switch to stats tab (index 2)
+                      // We'll need to pass this up to the parent
+                      _navigateToStats();
+                    },
+                  )
+                : null,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('❌ Error saving round'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // NEW: Navigate to stats (we'll need to add this callback)
+  void _navigateToStats() {
+    if (widget.onNavigateToStats != null) {
+      widget.onNavigateToStats!();
     }
   }
 
@@ -360,7 +535,20 @@ class _GameEntryViewState extends State<GameEntryView> {
                       onPressed: _nextHole,
                     )
                   else
-                    const SizedBox(width: 48),
+                    // NEW: Show "Finish Round" button on hole 18
+                    ElevatedButton.icon(
+                      onPressed: _nextHole,
+                      icon: const Icon(Icons.flag, color: Colors.white),
+                      label: const Text(
+                        'Finish',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green[700],
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                      ),
+                    ),
                 ],
               ),
               const SizedBox(height: 24),
@@ -389,6 +577,7 @@ class _GameEntryViewState extends State<GameEntryView> {
                     firValue,
                     (newValue) {
                       setState(() => firValue = newValue!);
+                      _autoSaveCurrentRound(); // Auto-save when FIR changes
                     },
                   ),
                   const SizedBox(height: 8),
@@ -398,6 +587,7 @@ class _GameEntryViewState extends State<GameEntryView> {
                     girValue,
                     (newValue) {
                       setState(() => girValue = newValue!);
+                      _autoSaveCurrentRound(); // Auto-save when GIR changes
                     },
                   ),
                 ],
@@ -476,6 +666,7 @@ class _GameEntryViewState extends State<GameEntryView> {
       ],
       onChanged: (value) {
         setState(() {});
+        _autoSaveCurrentRound(); // Auto-save when field changes
         if (label == 'Par' && value.isNotEmpty) {
           _strokesFocusNode.requestFocus();
         } else if (label == 'Putts' && value.isNotEmpty) {
@@ -553,6 +744,7 @@ class _GameEntryViewState extends State<GameEntryView> {
           ],
           onChanged: (value) {
             setState(() {});
+            _autoSaveCurrentRound(); // Auto-save when strokes change
             if (value.isNotEmpty) {
               _debounce?.cancel();
               if (value == '1') {
@@ -609,6 +801,7 @@ class _GameEntryViewState extends State<GameEntryView> {
               ],
               onChanged: (value) {
                 setState(() {});
+                _autoSaveCurrentRound(); // Auto-save when strokes change
                 if (value.isNotEmpty) {
                   _debounce?.cancel();
                   if (value == '1') {
@@ -687,6 +880,7 @@ class _GameEntryViewState extends State<GameEntryView> {
                     ],
                     onChanged: (value) {
                       setState(() {});
+                      _autoSaveCurrentRound(); // Auto-save when strokes change
                       if (value.isNotEmpty) {
                         _debounce?.cancel();
                         if (value == '1') {
@@ -1452,20 +1646,16 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     // This method is only called for Last Ten and Lifetime views (not Current Round)
     switch (_currentView) {
       case 1:
-        return _buildComingSoonContent(
+        return _buildSavedRoundsContent(
           title: 'Last Ten Rounds',
-          subtitle: isCourseFocused
-              ? 'Your most recent 10 rounds\nFiltered by current course'
-              : 'Your most recent 10 rounds\nAll courses combined',
-          icon: Icons.history,
+          isLastTen: true,
+          isCourseFocused: isCourseFocused,
         );
       case 2:
-        return _buildComingSoonContent(
+        return _buildSavedRoundsContent(
           title: 'Lifetime Statistics',
-          subtitle: isCourseFocused
-              ? 'All your rounds ever played\nFiltered by current course'
-              : 'All your rounds ever played\nAll courses combined',
-          icon: Icons.analytics,
+          isLastTen: false,
+          isCourseFocused: isCourseFocused,
         );
       default:
         return _buildComingSoonContent(
@@ -1512,6 +1702,317 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSavedRoundsContent({
+    required String title,
+    required bool isLastTen,
+    required bool isCourseFocused,
+  }) {
+    return FutureBuilder<List<SavedRound>>(
+      future: StorageService.getSavedRounds(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading rounds: ${snapshot.error}',
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
+
+        List<SavedRound> rounds = snapshot.data ?? [];
+
+        // Filter by course if needed
+        if (isCourseFocused && widget.courseName.isNotEmpty) {
+          rounds = rounds
+              .where((round) =>
+                  round.courseName.toLowerCase() ==
+                  widget.courseName.toLowerCase())
+              .toList();
+        }
+
+        // Sort by date (most recent first)
+        rounds.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+        // Limit to last 10 if needed
+        if (isLastTen && rounds.length > 10) {
+          rounds = rounds.take(10).toList();
+        }
+
+        if (rounds.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isLastTen ? Icons.history : Icons.analytics,
+                  size: 64,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isCourseFocused
+                      ? 'No rounds found for "${widget.courseName}"'
+                      : 'No saved rounds yet',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Complete a round to see your stats here!',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.green[700],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$title${isCourseFocused ? ' - ${widget.courseName}' : ''}',
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: rounds.length,
+                  itemBuilder: (context, index) {
+                    final round = rounds[index];
+                    final totalScore = round.holes.fold<int>(0,
+                        (sum, hole) => sum + (int.tryParse(hole.strokes) ?? 0));
+                    final totalPar = round.holes.fold<int>(
+                        0, (sum, hole) => sum + (int.tryParse(hole.par) ?? 0));
+                    final scoreToPar = totalScore - totalPar;
+
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: _getScoreColor(scoreToPar),
+                          child: Text(
+                            scoreToPar > 0 ? '+$scoreToPar' : '$scoreToPar',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          round.courseName,
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          '${_formatDate(round.dateTime)} • $totalScore (${round.holes.length} holes)',
+                        ),
+                        trailing: Icon(Icons.chevron_right),
+                        onTap: () => _showRoundDetails(round),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Color _getScoreColor(int scoreToPar) {
+    if (scoreToPar <= -2) return Colors.purple; // Eagle or better
+    if (scoreToPar == -1) return Colors.orange; // Birdie
+    if (scoreToPar == 0) return Colors.green; // Par
+    if (scoreToPar == 1) return Colors.blue; // Bogey
+    if (scoreToPar == 2) return Colors.red; // Double bogey
+    return Colors.grey; // Worse
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.month}/${date.day}/${date.year}';
+  }
+
+  void _showRoundDetails(SavedRound round) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(round.courseName),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Played on ${_formatDate(round.dateTime)}',
+                style:
+                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: _buildRoundDetailsTable(round),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRoundDetailsTable(SavedRound round) {
+    final totalScore = round.holes
+        .fold<int>(0, (sum, hole) => sum + (int.tryParse(hole.strokes) ?? 0));
+    final totalPar = round.holes
+        .fold<int>(0, (sum, hole) => sum + (int.tryParse(hole.par) ?? 0));
+    final totalPutts = round.holes
+        .fold<int>(0, (sum, hole) => sum + (int.tryParse(hole.putts) ?? 0));
+    final firs = round.holes.where((hole) => hole.fir == 'Yes').length;
+    final girs = round.holes.where((hole) => hole.gir == 'Yes').length;
+
+    return Column(
+      children: [
+        // Summary stats
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _buildStatItem('Score', '$totalScore'),
+              _buildStatItem('Par', '$totalPar'),
+              _buildStatItem('To Par',
+                  '${totalScore - totalPar > 0 ? '+' : ''}${totalScore - totalPar}'),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        // Hole-by-hole breakdown
+        Table(
+          border: TableBorder.all(color: Colors.grey[300]!),
+          columnWidths: const {
+            0: FixedColumnWidth(40),
+            1: FixedColumnWidth(40),
+            2: FixedColumnWidth(50),
+            3: FixedColumnWidth(50),
+            4: FixedColumnWidth(40),
+            5: FixedColumnWidth(40),
+          },
+          children: [
+            TableRow(
+              decoration: BoxDecoration(color: Colors.grey[200]),
+              children: [
+                _buildTableHeader('Hole'),
+                _buildTableHeader('Par'),
+                _buildTableHeader('Strokes'),
+                _buildTableHeader('Putts'),
+                _buildTableHeader('FIR'),
+                _buildTableHeader('GIR'),
+              ],
+            ),
+            ...round.holes.asMap().entries.map((entry) {
+              final index = entry.key;
+              final hole = entry.value;
+              return TableRow(
+                children: [
+                  _buildTableCell('${index + 1}'),
+                  _buildTableCell('${hole.par}'),
+                  _buildTableCell('${hole.strokes}'),
+                  _buildTableCell('${hole.putts}'),
+                  _buildTableCell(hole.fir == 'Yes' ? '✓' : ''),
+                  _buildTableCell(hole.gir == 'Yes' ? '✓' : ''),
+                ],
+              );
+            }).toList(),
+            // Totals row
+            TableRow(
+              decoration: BoxDecoration(color: Colors.grey[100]),
+              children: [
+                _buildTableHeader('Total'),
+                _buildTableHeader('$totalPar'),
+                _buildTableHeader('$totalScore'),
+                _buildTableHeader('$totalPutts'),
+                _buildTableHeader('$firs/${round.holes.length}'),
+                _buildTableHeader('$girs/${round.holes.length}'),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStatItem(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+      ),
+    );
+  }
+
+  Widget _buildTableCell(String text) {
+    return Padding(
+      padding: const EdgeInsets.all(8.0),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 12),
       ),
     );
   }
@@ -1735,4 +2236,528 @@ class StatItem {
   final String value;
 
   StatItem(this.label, this.value);
+}
+
+// --- SAVED COURSES VIEW ---
+class SavedCoursesView extends StatefulWidget {
+  final Function(SavedCourse) onCourseSelected;
+
+  const SavedCoursesView({
+    super.key,
+    required this.onCourseSelected,
+  });
+
+  @override
+  State<SavedCoursesView> createState() => _SavedCoursesViewState();
+}
+
+class _SavedCoursesViewState extends State<SavedCoursesView> {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Saved Courses',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green[700],
+                ),
+              ),
+              IconButton(
+                onPressed: _showAddCourseDialog,
+                icon: Icon(
+                  Icons.add_circle,
+                  color: Colors.green[700],
+                  size: 28,
+                ),
+                tooltip: 'Add New Course',
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: FutureBuilder<List<SavedCourse>>(
+              future: StorageService.getSavedCourses(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error loading courses: ${snapshot.error}',
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  );
+                }
+
+                final courses = snapshot.data ?? [];
+
+                if (courses.isEmpty) {
+                  return _buildEmptyState();
+                }
+
+                // Sort courses by most recently played
+                courses.sort((a, b) => b.lastPlayed.compareTo(a.lastPlayed));
+
+                return ListView.builder(
+                  itemCount: courses.length,
+                  itemBuilder: (context, index) {
+                    final course = courses[index];
+                    return _buildCourseCard(course);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.golf_course,
+            size: 64,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'No Saved Courses',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Courses will be automatically saved\nwhen you complete rounds',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 16,
+              color: Colors.grey[500],
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _showAddCourseDialog,
+            icon: const Icon(Icons.add),
+            label: const Text('Add Course Manually'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCourseCard(SavedCourse course) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      child: InkWell(
+        onTap: () => widget.onCourseSelected(course),
+        borderRadius: BorderRadius.circular(8),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Text(
+                      course.name,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _showEditCourseDialog(course);
+                      } else if (value == 'delete') {
+                        _showDeleteCourseDialog(course);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit, size: 18),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(Icons.delete, size: 18, color: Colors.red),
+                            SizedBox(width: 8),
+                            Text('Delete'),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  _buildCourseStatChip('Par ${course.totalPar}', Icons.flag),
+                  const SizedBox(width: 12),
+                  _buildCourseStatChip(
+                    'Played ${course.timesPlayed}x',
+                    Icons.sports_golf,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Last played: ${_formatDate(course.lastPlayed)}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Front 9: ${course.frontNinePar} • Back 9: ${course.backNinePar}',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCourseStatChip(String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.green[700]),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.green[700],
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.month}/${date.day}/${date.year}';
+  }
+
+  void _showAddCourseDialog() {
+    _showCourseDialog(null);
+  }
+
+  void _showEditCourseDialog(SavedCourse course) {
+    _showCourseDialog(course);
+  }
+
+  void _showCourseDialog(SavedCourse? existingCourse) {
+    final nameController = TextEditingController(
+      text: existingCourse?.name ?? '',
+    );
+    final List<TextEditingController> parControllers = List.generate(
+      18,
+      (index) => TextEditingController(
+        text: existingCourse?.pars[index].toString() ?? '',
+      ),
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(existingCourse == null ? 'Add New Course' : 'Edit Course'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Course Name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Par for each hole:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: _buildParInputGrid(parControllers),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              await _saveCourseFromDialog(
+                nameController,
+                parControllers,
+                existingCourse,
+              );
+              if (mounted) Navigator.of(context).pop();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.green[700],
+              foregroundColor: Colors.white,
+            ),
+            child: Text(existingCourse == null ? 'Add Course' : 'Save Changes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildParInputGrid(List<TextEditingController> controllers) {
+    return Column(
+      children: [
+        // Front 9
+        const Text('Front 9:', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 9,
+            childAspectRatio: 1,
+            crossAxisSpacing: 4,
+            mainAxisSpacing: 4,
+          ),
+          itemCount: 9,
+          itemBuilder: (context, index) =>
+              _buildParInput(controllers[index], index + 1),
+        ),
+        const SizedBox(height: 16),
+        // Back 9
+        const Text('Back 9:', style: TextStyle(fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 9,
+            childAspectRatio: 1,
+            crossAxisSpacing: 4,
+            mainAxisSpacing: 4,
+          ),
+          itemCount: 9,
+          itemBuilder: (context, index) =>
+              _buildParInput(controllers[index + 9], index + 10),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildParInput(TextEditingController controller, int holeNumber) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$holeNumber',
+          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 2),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.number,
+            inputFormatters: [
+              ParInputFormatter(),
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(1),
+            ],
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.zero,
+              isDense: true,
+            ),
+            style: const TextStyle(fontSize: 12),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _saveCourseFromDialog(
+    TextEditingController nameController,
+    List<TextEditingController> parControllers,
+    SavedCourse? existingCourse,
+  ) async {
+    final name = nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a course name')),
+      );
+      return;
+    }
+
+    final pars = <int>[];
+    for (final controller in parControllers) {
+      final par = int.tryParse(controller.text);
+      if (par == null || par < 3 || par > 6) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Please enter valid pars (3-6) for all holes')),
+        );
+        return;
+      }
+      pars.add(par);
+    }
+
+    final course = existingCourse?.copyWith(
+          name: name,
+          pars: pars,
+        ) ??
+        SavedCourse(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          name: name,
+          pars: pars,
+          dateCreated: DateTime.now(),
+          lastPlayed: DateTime.now(),
+        );
+
+    final success = await StorageService.saveCourse(course);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? '✅ Course ${existingCourse == null ? 'added' : 'updated'} successfully!'
+              : '❌ Failed to ${existingCourse == null ? 'add' : 'update'} course'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+      if (success) setState(() {});
+    }
+  }
+
+  void _showDeleteCourseDialog(SavedCourse course) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Course'),
+        content: Text('Are you sure you want to delete "${course.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final success = await StorageService.deleteCourse(course.id);
+              if (mounted) {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(success
+                        ? '✅ Course deleted successfully!'
+                        : '❌ Failed to delete course'),
+                    backgroundColor: success ? Colors.green : Colors.red,
+                  ),
+                );
+                if (success) setState(() {});
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- CALENDAR VIEW ---
+class CalendarView extends StatelessWidget {
+  const CalendarView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.calendar_today,
+            size: 64,
+            color: Colors.grey,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Calendar',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Coming Soon!',
+            style: TextStyle(
+              fontSize: 18,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

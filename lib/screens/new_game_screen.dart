@@ -90,8 +90,12 @@ class _NewGameScreenState extends State<NewGameScreen> {
   }
 
   void _updateCourseName(String name) {
-    setState(() {
-      _courseName = name;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _courseName = name;
+        });
+      }
     });
   }
 
@@ -102,6 +106,8 @@ class _NewGameScreenState extends State<NewGameScreen> {
         roundData: _roundData,
         currentHoleIndex: _currentHoleIndex,
         courseName: _courseName, // NEW: Pass current course name
+        isSavedCourse:
+            widget.savedCourse != null, // NEW: Pass saved course flag
         onHoleChanged: (newIndex) {
           setState(() {
             _currentHoleIndex = newIndex;
@@ -117,7 +123,7 @@ class _NewGameScreenState extends State<NewGameScreen> {
       ),
       ScorecardView(roundData: _roundData, courseName: _courseName),
       StatsView(roundData: _roundData, courseName: _courseName),
-      CalendarView(), // Restored Calendar tab
+      const CalendarView(), // Restored Calendar tab
     ];
 
     return Scaffold(
@@ -162,16 +168,17 @@ class _NewGameScreenState extends State<NewGameScreen> {
           ),
         ],
       ),
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       body: Column(
         children: [
-          Expanded(child: screenViews.elementAt(_selectedIndex)),
+          // Banner Ad at top
           Container(
             height: 50,
             width: double.infinity,
             color: Colors.grey[300],
             child: const Center(child: Text('Banner Ad Placeholder')),
           ),
+          Expanded(child: screenViews.elementAt(_selectedIndex)),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -206,6 +213,7 @@ class GameEntryView extends StatefulWidget {
   final ValueChanged<String>? onCourseNameChanged;
   final String courseName; // NEW: Current course name
   final VoidCallback? onNavigateToStats; // NEW: Callback to navigate to stats
+  final bool isSavedCourse; // NEW: Flag to indicate if using saved course
 
   const GameEntryView({
     super.key,
@@ -215,6 +223,7 @@ class GameEntryView extends StatefulWidget {
     this.onCourseNameChanged,
     this.courseName = '', // NEW: Default empty string
     this.onNavigateToStats, // NEW: Optional callback
+    this.isSavedCourse = false, // NEW: Default to false
   });
 
   @override
@@ -227,6 +236,7 @@ class _GameEntryViewState extends State<GameEntryView> {
   late TextEditingController _strokesController;
   late TextEditingController _puttsController;
 
+  late FocusNode _courseNameFocusNode; // NEW: Focus node for course name
   late FocusNode _parFocusNode;
   late FocusNode _strokesFocusNode;
   late FocusNode _puttsFocusNode;
@@ -252,8 +262,8 @@ class _GameEntryViewState extends State<GameEntryView> {
     if (!_isDragging) return;
 
     final double dragDistance = details.globalPosition.dx - _dragStartX;
-    final double minSwipeDistance = 30.0; // Minimum distance for a swipe
-    final double maxVelocity = 2000.0; // Maximum velocity to consider
+    const double minSwipeDistance = 30.0; // Minimum distance for a swipe
+    const double maxVelocity = 2000.0; // Maximum velocity to consider
 
     // Check if this is a valid swipe gesture
     bool isValidSwipe = false;
@@ -293,6 +303,8 @@ class _GameEntryViewState extends State<GameEntryView> {
     _strokesController = TextEditingController();
     _puttsController = TextEditingController();
 
+    _courseNameFocusNode =
+        FocusNode(); // NEW: Initialize course name focus node
     _parFocusNode = FocusNode();
     _strokesFocusNode = FocusNode();
     _puttsFocusNode = FocusNode();
@@ -316,6 +328,7 @@ class _GameEntryViewState extends State<GameEntryView> {
     _strokesController.dispose();
     _puttsController.dispose();
 
+    _courseNameFocusNode.dispose(); // NEW: Dispose course name focus node
     _parFocusNode.dispose();
     _strokesFocusNode.dispose();
     _puttsFocusNode.dispose();
@@ -366,6 +379,45 @@ class _GameEntryViewState extends State<GameEntryView> {
       firValue = holeData.fir;
       girValue = holeData.gir;
     });
+
+    // NEW: Auto-focus appropriate field after loading
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _setAutoFocus();
+      });
+    });
+  }
+
+  // NEW: Auto-focus logic based on course type and hole data
+  void _setAutoFocus() {
+    // For new courses on hole 1 with empty course name, focus on course name
+    if (!widget.isSavedCourse &&
+        widget.currentHoleIndex == 0 &&
+        widget.courseName.isEmpty) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _courseNameFocusNode.requestFocus();
+      });
+      return;
+    }
+
+    // If it's a saved course (pars are pre-filled), focus on strokes
+    if (widget.isSavedCourse && _parController.text.isNotEmpty) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _strokesFocusNode.requestFocus();
+      });
+    }
+    // If it's a new course and par is empty, focus on par
+    else if (_parController.text.isEmpty) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _parFocusNode.requestFocus();
+      });
+    }
+    // If par is filled but strokes is empty, focus on strokes
+    else if (_strokesController.text.isEmpty) {
+      Future.delayed(const Duration(milliseconds: 100), () {
+        if (mounted) _strokesFocusNode.requestFocus();
+      });
+    }
   }
 
   void _nextHole() {
@@ -386,27 +438,83 @@ class _GameEntryViewState extends State<GameEntryView> {
       barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: const Text('🏌️ Round Complete!'),
-          content: const Text(
-            'Congratulations on completing your round!\n\nWould you like to save this round for your records?',
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.emoji_events, color: Colors.amber[600], size: 28),
+              const SizedBox(width: 8),
+              const Text(
+                'Round Complete!',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Congratulations on finishing your round!',
+                style: TextStyle(fontSize: 16),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.save, color: Colors.green[600], size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                      child: Text(
+                        'Save this round to track your progress and build your golf history',
+                        style: TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
               onPressed: () {
                 Navigator.of(context).pop();
               },
-              child: const Text('Not Now'),
+              style: TextButton.styleFrom(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+              child: const Text(
+                'Not Now',
+                style: TextStyle(color: Colors.grey),
+              ),
             ),
-            ElevatedButton(
+            ElevatedButton.icon(
               onPressed: () async {
                 Navigator.of(context).pop();
                 await _saveRoundFromEntry();
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green[700],
+                backgroundColor: Colors.green[600],
                 foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
               ),
-              child: const Text('Save Round'),
+              icon: const Icon(Icons.save, size: 18),
+              label: const Text('Save Round'),
             ),
           ],
         );
@@ -434,18 +542,55 @@ class _GameEntryViewState extends State<GameEntryView> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(success
-                ? '✅ Round saved! Check out your stats in the Stats tab.'
-                : '❌ Failed to save round'),
-            backgroundColor: success ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 4),
+            content: success
+                ? const Row(
+                    children: [
+                      Icon(Icons.check_circle, color: Colors.white),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Round Saved Successfully!',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              'Check out your stats in the Stats tab',
+                              style: TextStyle(fontSize: 14),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : const Row(
+                    children: [
+                      Icon(Icons.error, color: Colors.white),
+                      SizedBox(width: 12),
+                      Text(
+                        'Failed to save round',
+                        style: TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+            backgroundColor: success ? Colors.green[600] : Colors.red[600],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 5),
             action: success
                 ? SnackBarAction(
                     label: 'View Stats',
                     textColor: Colors.white,
+                    backgroundColor: Colors.green[800],
                     onPressed: () {
-                      // Switch to stats tab (index 2)
-                      // We'll need to pass this up to the parent
                       _navigateToStats();
                     },
                   )
@@ -489,110 +634,126 @@ class _GameEntryViewState extends State<GameEntryView> {
       child: Container(
         width: double.infinity,
         height: double.infinity,
+        // NEW: Alternating background colors by hole
+        color: (widget.currentHoleIndex % 2 == 0)
+            ? Colors.white
+            : Colors.grey[200],
         child: Padding(
           padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              TextField(
-                controller: _courseNameController,
-                textAlign: TextAlign.center,
-                decoration: InputDecoration(
-                  hintText: 'Enter Course Name',
-                  hintStyle: TextStyle(color: Colors.grey[600]),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                TextField(
+                  controller: _courseNameController,
+                  focusNode: _courseNameFocusNode, // NEW: Add focus node
+                  textAlign: TextAlign.center,
+                  textInputAction: TextInputAction.done,
+                  decoration: InputDecoration(
+                    hintText: 'Enter Course Name',
+                    hintStyle: TextStyle(color: Colors.grey[600]),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8.0),
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey[200],
                   ),
-                  filled: true,
-                  fillColor: Colors.grey[200],
+                  onChanged: (value) {
+                    widget.onCourseNameChanged?.call(value);
+                  },
+                  onSubmitted: (_) {
+                    // NEW: When course name is entered, move to par field or dismiss
+                    if (!widget.isSavedCourse) {
+                      _parFocusNode.requestFocus();
+                    } else {
+                      FocusScope.of(context).unfocus();
+                    }
+                  },
                 ),
-                onChanged: (value) {
-                  widget.onCourseNameChanged?.call(value);
-                },
-              ),
-              const SizedBox(height: 16),
-              // Centered hole navigation
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  if (widget.currentHoleIndex > 0)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios),
-                      onPressed: _previousHole,
-                    )
-                  else
-                    const SizedBox(width: 48),
-                  Text(
-                    'Hole ${widget.currentHoleIndex + 1}',
-                    style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (widget.currentHoleIndex < 17)
-                    IconButton(
-                      icon: const Icon(Icons.arrow_forward_ios),
-                      onPressed: _nextHole,
-                    )
-                  else
-                    // NEW: Show "Finish Round" button on hole 18
-                    ElevatedButton.icon(
-                      onPressed: _nextHole,
-                      icon: const Icon(Icons.flag, color: Colors.white),
-                      label: const Text(
-                        'Finish',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green[700],
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
+                const SizedBox(height: 16),
+                // Centered hole navigation
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    if (widget.currentHoleIndex > 0)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back_ios),
+                        onPressed: _previousHole,
+                      )
+                    else
+                      const SizedBox(width: 48),
+                    Text(
+                      'Hole ${widget.currentHoleIndex + 1}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              // Centered input section
-              Column(
-                children: [
-                  _buildInputRow(
-                    label: 'Par',
-                    controller: _parController,
-                    focusNode: _parFocusNode,
-                  ),
-                  _buildInputRow(
-                    label: 'Strokes',
-                    controller: _strokesController,
-                    focusNode: _strokesFocusNode,
-                  ),
-                  _buildInputRow(
-                    label: 'Putts',
-                    controller: _puttsController,
-                    focusNode: _puttsFocusNode,
-                  ),
-                  const SizedBox(height: 16),
-                  _buildSegmentedControl(
-                    'FIR',
-                    ['Yes', 'N/A', 'No'],
-                    firValue,
-                    (newValue) {
-                      setState(() => firValue = newValue!);
-                      _autoSaveCurrentRound(); // Auto-save when FIR changes
-                    },
-                  ),
-                  const SizedBox(height: 8),
-                  _buildSegmentedControl(
-                    'GIR',
-                    ['Yes', 'N/A', 'No'],
-                    girValue,
-                    (newValue) {
-                      setState(() => girValue = newValue!);
-                      _autoSaveCurrentRound(); // Auto-save when GIR changes
-                    },
-                  ),
-                ],
-              ),
-            ],
+                    if (widget.currentHoleIndex < 17)
+                      IconButton(
+                        icon: const Icon(Icons.arrow_forward_ios),
+                        onPressed: _nextHole,
+                      )
+                    else
+                      // NEW: Show "Finish Round" button on hole 18
+                      ElevatedButton.icon(
+                        onPressed: _nextHole,
+                        icon: const Icon(Icons.flag, color: Colors.white),
+                        label: const Text(
+                          'Finish',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green[700],
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 8),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                // Centered input section
+                Column(
+                  children: [
+                    _buildInputRow(
+                      label: 'Par',
+                      controller: _parController,
+                      focusNode: _parFocusNode,
+                    ),
+                    _buildInputRow(
+                      label: 'Strokes',
+                      controller: _strokesController,
+                      focusNode: _strokesFocusNode,
+                    ),
+                    _buildInputRow(
+                      label: 'Putts',
+                      controller: _puttsController,
+                      focusNode: _puttsFocusNode,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildSegmentedControl(
+                      'FIR',
+                      ['Yes', 'N/A', 'No'],
+                      firValue,
+                      (newValue) {
+                        setState(() => firValue = newValue!);
+                        _autoSaveCurrentRound(); // Auto-save when FIR changes
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    _buildSegmentedControl(
+                      'GIR',
+                      ['Yes', 'N/A', 'No'],
+                      girValue,
+                      (newValue) {
+                        setState(() => girValue = newValue!);
+                        _autoSaveCurrentRound(); // Auto-save when GIR changes
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -659,11 +820,21 @@ class _GameEntryViewState extends State<GameEntryView> {
       textAlign: TextAlign.center,
       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       keyboardType: TextInputType.number,
+      textInputAction: TextInputAction.done,
       inputFormatters: [
         if (label == 'Par') ParInputFormatter(),
         FilteringTextInputFormatter.digitsOnly,
         LengthLimitingTextInputFormatter(label == 'Strokes' ? 2 : 1),
       ],
+      onSubmitted: (value) {
+        if (label == 'Par' && value.isNotEmpty) {
+          _strokesFocusNode.requestFocus();
+        } else if (label == 'Putts') {
+          FocusScope.of(context).unfocus();
+        } else {
+          FocusScope.of(context).unfocus();
+        }
+      },
       onChanged: (value) {
         setState(() {});
         _autoSaveCurrentRound(); // Auto-save when field changes
@@ -762,6 +933,13 @@ class _GameEntryViewState extends State<GameEntryView> {
               }
             }
           },
+          onSubmitted: (value) {
+            if (value.isNotEmpty) {
+              _puttsFocusNode.requestFocus();
+            } else {
+              FocusScope.of(context).unfocus();
+            }
+          },
           decoration: const InputDecoration(
             border: InputBorder.none,
             filled: true,
@@ -795,10 +973,18 @@ class _GameEntryViewState extends State<GameEntryView> {
                 color: Colors.transparent,
               ),
               keyboardType: TextInputType.number,
+              textInputAction: TextInputAction.done,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
                 LengthLimitingTextInputFormatter(2),
               ],
+              onSubmitted: (value) {
+                if (value.isNotEmpty) {
+                  _puttsFocusNode.requestFocus();
+                } else {
+                  FocusScope.of(context).unfocus();
+                }
+              },
               onChanged: (value) {
                 setState(() {});
                 _autoSaveCurrentRound(); // Auto-save when strokes change
@@ -1062,7 +1248,12 @@ class ScorecardView extends StatelessWidget {
   Widget _buildHeaderRow() {
     List<Widget> cells = [];
     for (int i = 1; i <= 9; i++) {
-      cells.add(_buildCell(text: '$i', fontWeight: FontWeight.bold));
+      final isEvenHole = (i - 1) % 2 == 0; // hole 1,3,5,7,9
+      cells.add(_buildCell(
+        text: '$i',
+        fontWeight: FontWeight.bold,
+        backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white,
+      ));
     }
     cells.add(
       _buildCell(
@@ -1073,7 +1264,12 @@ class ScorecardView extends StatelessWidget {
       ),
     );
     for (int i = 10; i <= 18; i++) {
-      cells.add(_buildCell(text: '$i', fontWeight: FontWeight.bold));
+      final isEvenHole = (i - 1) % 2 == 0; // hole 10,12,14,16,18
+      cells.add(_buildCell(
+        text: '$i',
+        fontWeight: FontWeight.bold,
+        backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white,
+      ));
     }
     cells.add(
       _buildCell(
@@ -1105,10 +1301,15 @@ class ScorecardView extends StatelessWidget {
     for (int i = 0; i < 9; i++) {
       final par = int.tryParse(roundData[i].par) ?? 0;
       final value = int.tryParse(getValue(roundData[i])) ?? 0;
+      final isEvenHole = i % 2 == 0; // i=0 (hole 1), i=2 (hole 3), etc.
       cells.add(
         showScoreIndicator
-            ? _buildScoreCell(par, value)
-            : _buildCell(text: value == 0 ? '' : '$value'),
+            ? _buildScoreCell(par, value,
+                backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white)
+            : _buildCell(
+                text: value == 0 ? '' : '$value',
+                backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white,
+              ),
       );
       if (value > 0) frontNine.add(value);
     }
@@ -1124,10 +1325,15 @@ class ScorecardView extends StatelessWidget {
     for (int i = 9; i < 18; i++) {
       final par = int.tryParse(roundData[i].par) ?? 0;
       final value = int.tryParse(getValue(roundData[i])) ?? 0;
+      final isEvenHole = i % 2 == 0; // i=8 (hole 9), i=10 (hole 11), etc.
       cells.add(
         showScoreIndicator
-            ? _buildScoreCell(par, value)
-            : _buildCell(text: value == 0 ? '' : '$value'),
+            ? _buildScoreCell(par, value,
+                backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white)
+            : _buildCell(
+                text: value == 0 ? '' : '$value',
+                backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white,
+              ),
       );
       if (value > 0) backNine.add(value);
     }
@@ -1152,8 +1358,9 @@ class ScorecardView extends StatelessWidget {
     return Row(children: cells);
   }
 
-  Widget _buildScoreCell(int par, int score) {
-    if (score == 0) return _buildCell();
+  Widget _buildScoreCell(int par, int score,
+      {Color backgroundColor = Colors.transparent}) {
+    if (score == 0) return _buildCell(backgroundColor: backgroundColor);
 
     final scoreText = Text('$score', style: const TextStyle(fontSize: 16));
     int diff = score - par;
@@ -1202,6 +1409,7 @@ class ScorecardView extends StatelessWidget {
     }
 
     return _buildCell(
+      backgroundColor: backgroundColor,
       child: Stack(
         alignment: Alignment.center,
         children: [scoreText, if (indicator != null) indicator],
@@ -1217,8 +1425,12 @@ class ScorecardView extends StatelessWidget {
     for (int i = 0; i < 9; i++) {
       final value = getValue(roundData[i]);
       if (value == 'Yes') frontNineCount++;
+      final isEvenHole = i % 2 == 0; // i=0 (hole 1), i=2 (hole 3), etc.
       cells.add(
-        _buildCell(text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A')),
+        _buildCell(
+          text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A'),
+          backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white,
+        ),
       );
     }
     cells.add(
@@ -1233,8 +1445,12 @@ class ScorecardView extends StatelessWidget {
     for (int i = 9; i < 18; i++) {
       final value = getValue(roundData[i]);
       if (value == 'Yes') backNineCount++;
+      final isEvenHole = i % 2 == 0; // i=8 (hole 9), i=10 (hole 11), etc.
       cells.add(
-        _buildCell(text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A')),
+        _buildCell(
+          text: value == 'Yes' ? '✓' : (value == 'No' ? 'X' : 'N/A'),
+          backgroundColor: isEvenHole ? Colors.grey[100]! : Colors.white,
+        ),
       );
     }
     cells.add(
@@ -1257,31 +1473,35 @@ class ScorecardView extends StatelessWidget {
     return Row(children: cells);
   }
 
+  Map<String, dynamic> _calculateCurrentProgress() {
+    int lastCompletedHole = 0;
+    int totalPar = 0;
+    int totalStrokes = 0;
+
+    // Find the last hole with both par and strokes filled
+    for (int i = 0; i < roundData.length; i++) {
+      final par = int.tryParse(roundData[i].par);
+      final strokes = int.tryParse(roundData[i].strokes);
+
+      if (par != null && par > 0 && strokes != null && strokes > 0) {
+        lastCompletedHole = i + 1; // 1-based hole number
+        totalPar += par;
+        totalStrokes += strokes;
+      }
+    }
+
+    final scoreToPar = totalStrokes - totalPar;
+
+    return {
+      'holesCompleted': lastCompletedHole,
+      'totalPar': totalPar,
+      'totalStrokes': totalStrokes,
+      'scoreToPar': scoreToPar,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Calculate running totals
-    int outPar = 0, outScore = 0, inPar = 0, inScore = 0;
-
-    // Front nine totals
-    for (int i = 0; i < 9; i++) {
-      final par = int.tryParse(roundData[i].par) ?? 0;
-      final score = int.tryParse(roundData[i].strokes) ?? 0;
-      if (par > 0) outPar += par;
-      if (score > 0) outScore += score;
-    }
-
-    // Back nine totals
-    for (int i = 9; i < 18; i++) {
-      final par = int.tryParse(roundData[i].par) ?? 0;
-      final score = int.tryParse(roundData[i].strokes) ?? 0;
-      if (par > 0) inPar += par;
-      if (score > 0) inScore += score;
-    }
-
-    final totalPar = outPar + inPar;
-    final totalScore = outScore + inScore;
-    final totalToPar = totalScore > 0 ? totalScore - totalPar : 0;
-
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -1320,69 +1540,76 @@ class ScorecardView extends StatelessWidget {
 
           // Running score summary
           const SizedBox(height: 16),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: Colors.grey[100],
-              borderRadius: BorderRadius.circular(8.0),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'Score Summary',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          Builder(
+            builder: (context) {
+              final progress = _calculateCurrentProgress();
+              final holesCompleted = progress['holesCompleted'] as int;
+              final scoreToPar = progress['scoreToPar'] as int;
+              final totalStrokes = progress['totalStrokes'] as int;
+
+              if (holesCompleted == 0) {
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12.0),
+                  decoration: BoxDecoration(
+                    color: Colors.yellow[100],
+                    borderRadius: BorderRadius.circular(12.0),
+                    border: Border.all(color: Colors.yellow.shade300),
+                  ),
+                  child: const Text(
+                    'Score Summary - No holes completed yet',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              }
+
+              String scoreText;
+              if (scoreToPar == 0) {
+                scoreText = 'Even Par ($totalStrokes)';
+              } else if (scoreToPar > 0) {
+                scoreText = '+$scoreToPar ($totalStrokes)';
+              } else {
+                scoreText = '$scoreToPar ($totalStrokes)';
+              }
+
+              return Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12.0),
+                decoration: BoxDecoration(
+                  color: Colors.yellow[100],
+                  borderRadius: BorderRadius.circular(12.0),
+                  border: Border.all(color: Colors.yellow.shade300),
                 ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                child: Column(
                   children: [
-                    Column(
-                      children: [
-                        const Text(
-                          'Out',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '$outScore${outPar > 0 ? " (${outScore - outPar > 0 ? '+' : ''}${outScore - outPar})" : ""}',
-                        ),
-                      ],
+                    Text(
+                      'Score Summary Thru $holesCompleted Hole${holesCompleted == 1 ? '' : 's'}',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    Column(
-                      children: [
-                        const Text(
-                          'In',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '$inScore${inPar > 0 ? " (${inScore - inPar > 0 ? '+' : ''}${inScore - inPar})" : ""}',
-                        ),
-                      ],
-                    ),
-                    Column(
-                      children: [
-                        const Text(
-                          'Total',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        Text(
-                          '$totalScore${totalPar > 0 ? " (${totalToPar > 0 ? '+' : ''}$totalToPar)" : ""}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: totalToPar > 0
-                                ? Colors.red
-                                : (totalToPar < 0
-                                    ? Colors.green
-                                    : Colors.black),
-                          ),
-                        ),
-                      ],
+                    const SizedBox(height: 4),
+                    Text(
+                      scoreText,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: scoreToPar > 0
+                            ? Colors.red[700]
+                            : (scoreToPar < 0
+                                ? Colors.green[700]
+                                : Colors.black),
+                      ),
                     ),
                   ],
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ],
       ),
@@ -1403,11 +1630,33 @@ class StatsView extends StatefulWidget {
 
 class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   int _currentView = 0; // 0: Current Round, 1: Last Ten, 2: Lifetime
-  int _selectedTab = 0; // 0: Course, 1: All (for Last Ten and Lifetime views)
+  int _selectedTab = 0; // 0: All, 1: Course (switched order)
+  String? _selectedCourse; // For course dropdown
+  List<SavedCourse> _savedCourses = []; // Store saved courses
 
   // Track pan gesture for better swipe detection
   double _dragStartX = 0.0;
   bool _isDragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCourses();
+  }
+
+  Future<void> _loadSavedCourses() async {
+    final courses = await StorageService.getSavedCourses();
+    setState(() {
+      _savedCourses = courses;
+      // Set default to current course if available
+      if (widget.courseName.isNotEmpty &&
+          courses.any((course) => course.name == widget.courseName)) {
+        _selectedCourse = widget.courseName;
+      } else if (courses.isNotEmpty) {
+        _selectedCourse = courses.first.name;
+      }
+    });
+  }
 
   void _handlePanStart(DragStartDetails details) {
     _dragStartX = details.globalPosition.dx;
@@ -1422,8 +1671,8 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     if (!_isDragging) return;
 
     final double dragDistance = details.globalPosition.dx - _dragStartX;
-    final double minSwipeDistance = 30.0; // Reduced for more sensitivity
-    final double maxVelocity = 2000.0; // Increased for faster swipes
+    const double minSwipeDistance = 30.0; // Reduced for more sensitivity
+    const double maxVelocity = 2000.0; // Increased for faster swipes
 
     // Check if this is a valid swipe gesture
     bool isValidSwipe = false;
@@ -1472,7 +1721,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
             onPanUpdate: _handlePanUpdate,
             onPanEnd: _handlePanEnd,
             behavior: HitTestBehavior.translucent,
-            child: Container(
+            child: SizedBox(
               width: double.infinity,
               height: double.infinity,
               child: _currentView == 0
@@ -1550,80 +1799,123 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
   Widget _buildCustomTabs() {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16.0),
-      child: Row(
+      child: Column(
         children: [
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                setState(() {
-                  _selectedTab = 0;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12.0),
-                decoration: BoxDecoration(
-                  color:
-                      _selectedTab == 0 ? Colors.green[700] : Colors.grey[200],
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(8.0),
-                    bottomLeft: Radius.circular(8.0),
-                  ),
-                  border: Border.all(
-                    color: _selectedTab == 0
-                        ? Colors.green[700]!
-                        : Colors.grey[300]!,
-                    width: 1.0,
-                  ),
-                ),
-                child: Text(
-                  'Course',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _selectedTab == 0 ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          Expanded(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () {
-                setState(() {
-                  _selectedTab = 1;
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 12.0),
-                decoration: BoxDecoration(
-                  color:
-                      _selectedTab == 1 ? Colors.green[700] : Colors.grey[200],
-                  borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(8.0),
-                    bottomRight: Radius.circular(8.0),
-                  ),
-                  border: Border.all(
-                    color: _selectedTab == 1
-                        ? Colors.green[700]!
-                        : Colors.grey[300]!,
-                    width: 1.0,
-                  ),
-                ),
-                child: Text(
-                  'All',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: _selectedTab == 1 ? Colors.white : Colors.black,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
+          // Tab buttons
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _selectedTab = 0;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    decoration: BoxDecoration(
+                      color: _selectedTab == 0
+                          ? Colors.green[700]
+                          : Colors.grey[200],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8.0),
+                        bottomLeft: Radius.circular(8.0),
+                      ),
+                      border: Border.all(
+                        color: _selectedTab == 0
+                            ? Colors.green[700]!
+                            : Colors.grey[300]!,
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      'All',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _selectedTab == 0 ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _selectedTab = 1;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    decoration: BoxDecoration(
+                      color: _selectedTab == 1
+                          ? Colors.green[700]
+                          : Colors.grey[200],
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(8.0),
+                        bottomRight: Radius.circular(8.0),
+                      ),
+                      border: Border.all(
+                        color: _selectedTab == 1
+                            ? Colors.green[700]!
+                            : Colors.grey[300]!,
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      'Course',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _selectedTab == 1 ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
+          // Course dropdown (only show when Course tab is selected)
+          if (_selectedTab == 1) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8.0),
+                color: Colors.white,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _selectedCourse,
+                  hint: const Text('Select a course'),
+                  icon: Icon(Icons.arrow_drop_down, color: Colors.green[700]),
+                  items: _savedCourses.map((course) {
+                    return DropdownMenuItem<String>(
+                      value: course.name,
+                      child: Text(
+                        course.name,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedCourse = newValue;
+                    });
+                  },
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -1644,18 +1936,21 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
 
   Widget _buildTabContent({required bool isCourseFocused}) {
     // This method is only called for Last Ten and Lifetime views (not Current Round)
+    // Tab 0 = All, Tab 1 = Course (switched order)
     switch (_currentView) {
       case 1:
         return _buildSavedRoundsContent(
           title: 'Last Ten Rounds',
           isLastTen: true,
-          isCourseFocused: isCourseFocused,
+          isCourseFocused: _selectedTab == 1, // Course tab is now index 1
+          selectedCourse: _selectedTab == 1 ? _selectedCourse : null,
         );
       case 2:
         return _buildSavedRoundsContent(
           title: 'Lifetime Statistics',
           isLastTen: false,
-          isCourseFocused: isCourseFocused,
+          isCourseFocused: _selectedTab == 1, // Course tab is now index 1
+          selectedCourse: _selectedTab == 1 ? _selectedCourse : null,
         );
       default:
         return _buildComingSoonContent(
@@ -1710,6 +2005,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
     required String title,
     required bool isLastTen,
     required bool isCourseFocused,
+    String? selectedCourse,
   }) {
     return FutureBuilder<List<SavedRound>>(
       future: StorageService.getSavedRounds(),
@@ -1730,11 +2026,13 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         List<SavedRound> rounds = snapshot.data ?? [];
 
         // Filter by course if needed
-        if (isCourseFocused && widget.courseName.isNotEmpty) {
+        if (isCourseFocused &&
+            selectedCourse != null &&
+            selectedCourse.isNotEmpty) {
           rounds = rounds
               .where((round) =>
                   round.courseName.toLowerCase() ==
-                  widget.courseName.toLowerCase())
+                  selectedCourse.toLowerCase())
               .toList();
         }
 
@@ -1767,19 +2065,11 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  isCourseFocused
-                      ? 'No rounds found for "${widget.courseName}"'
+                  isCourseFocused && selectedCourse != null
+                      ? 'No rounds found for "$selectedCourse"'
                       : 'No saved rounds yet',
                   textAlign: TextAlign.center,
                   style: const TextStyle(fontSize: 16, color: Colors.grey),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Complete a round to see your stats here!',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.green[700],
-                  ),
                 ),
               ],
             ),
@@ -1792,7 +2082,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '$title${isCourseFocused ? ' - ${widget.courseName}' : ''}',
+                '$title${isCourseFocused && selectedCourse != null ? ' - $selectedCourse' : ''}',
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -1831,7 +2121,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
                         subtitle: Text(
                           '${_formatDate(round.dateTime)} • $totalScore (${round.holes.length} holes)',
                         ),
-                        trailing: Icon(Icons.chevron_right),
+                        trailing: const Icon(Icons.chevron_right),
                         onTap: () => _showRoundDetails(round),
                       ),
                     );
@@ -1949,16 +2239,19 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
               final index = entry.key;
               final hole = entry.value;
               return TableRow(
+                decoration: BoxDecoration(
+                  color: index.isEven ? Colors.grey[100] : Colors.white,
+                ),
                 children: [
                   _buildTableCell('${index + 1}'),
-                  _buildTableCell('${hole.par}'),
-                  _buildTableCell('${hole.strokes}'),
-                  _buildTableCell('${hole.putts}'),
+                  _buildTableCell(hole.par),
+                  _buildTableCell(hole.strokes),
+                  _buildTableCell(hole.putts),
                   _buildTableCell(hole.fir == 'Yes' ? '✓' : ''),
                   _buildTableCell(hole.gir == 'Yes' ? '✓' : ''),
                 ],
               );
-            }).toList(),
+            }),
             // Totals row
             TableRow(
               decoration: BoxDecoration(color: Colors.grey[100]),
@@ -2192,7 +2485,7 @@ class _StatsViewState extends State<StatsView> with TickerProviderStateMixin {
         border: Border.all(color: Colors.grey.shade300),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: Colors.grey.withValues(alpha: 0.1),
             spreadRadius: 1,
             blurRadius: 3,
             offset: const Offset(0, 2),
@@ -2544,12 +2837,13 @@ class _SavedCoursesViewState extends State<SavedCoursesView> {
           ),
           ElevatedButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
               await _saveCourseFromDialog(
                 nameController,
                 parControllers,
                 existingCourse,
               );
-              if (mounted) Navigator.of(context).pop();
+              if (mounted) navigator.pop();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.green[700],
@@ -2698,10 +2992,12 @@ class _SavedCoursesViewState extends State<SavedCoursesView> {
           ),
           ElevatedButton(
             onPressed: () async {
+              final navigator = Navigator.of(context);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
               final success = await StorageService.deleteCourse(course.id);
               if (mounted) {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
+                navigator.pop();
+                scaffoldMessenger.showSnackBar(
                   SnackBar(
                     content: Text(success
                         ? '✅ Course deleted successfully!'
@@ -2757,6 +3053,1212 @@ class CalendarView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// --- SAVED STATS SCREEN (Standalone stats without current round) ---
+class SavedStatsScreen extends StatefulWidget {
+  const SavedStatsScreen({super.key});
+
+  @override
+  State<SavedStatsScreen> createState() => _SavedStatsScreenState();
+}
+
+class _SavedStatsScreenState extends State<SavedStatsScreen>
+    with TickerProviderStateMixin {
+  int _currentView = 0; // 0: Last Ten, 1: Lifetime (no current round)
+  int _selectedTab = 0; // 0: All, 1: Course
+  String? _selectedCourse;
+  List<SavedCourse> _savedCourses = [];
+
+  // Track pan gesture for better swipe detection
+  double _dragStartX = 0.0;
+  bool _isDragging = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCourses();
+  }
+
+  Future<void> _loadSavedCourses() async {
+    final courses = await StorageService.getSavedCourses();
+    setState(() {
+      _savedCourses = courses;
+      if (courses.isNotEmpty) {
+        _selectedCourse = courses.first.name;
+      }
+    });
+  }
+
+  void _handlePanStart(DragStartDetails details) {
+    _dragStartX = details.globalPosition.dx;
+    _isDragging = true;
+  }
+
+  void _handlePanUpdate(DragUpdateDetails details) {
+    // Optional: Add visual feedback during drag if needed
+  }
+
+  void _handlePanEnd(DragEndDetails details) {
+    if (!_isDragging) return;
+
+    final double dragDistance = details.globalPosition.dx - _dragStartX;
+    const double minSwipeDistance = 30.0;
+    const double maxVelocity = 2000.0;
+
+    bool isValidSwipe = false;
+    bool swipeRight = false;
+
+    if (dragDistance.abs() > minSwipeDistance) {
+      isValidSwipe = true;
+      swipeRight = dragDistance > 0;
+    } else if (details.primaryVelocity != null &&
+        details.primaryVelocity!.abs() > 150 &&
+        details.primaryVelocity!.abs() < maxVelocity) {
+      isValidSwipe = true;
+      swipeRight = details.primaryVelocity! > 0;
+    }
+
+    if (isValidSwipe) {
+      if (swipeRight && _currentView > 0) {
+        setState(() {
+          _currentView--;
+        });
+      } else if (!swipeRight && _currentView < 1) {
+        // Only 2 views now
+        setState(() {
+          _currentView++;
+        });
+      }
+    }
+
+    _isDragging = false;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        title: const Text('Saved Stats'),
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          // Navigation header with arrows
+          _buildNavigationHeader(),
+          // Custom tabs
+          _buildCustomTabs(),
+          const SizedBox(height: 16),
+          // Content with swipe detection
+          Expanded(
+            child: GestureDetector(
+              onPanStart: _handlePanStart,
+              onPanUpdate: _handlePanUpdate,
+              onPanEnd: _handlePanEnd,
+              behavior: HitTestBehavior.translucent,
+              child: _buildTabContent(isCourseFocused: _selectedTab == 1),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavigationHeader() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Left arrow
+          _currentView > 0
+              ? IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentView--;
+                    });
+                  },
+                  icon: const Icon(Icons.arrow_back_ios, color: Colors.green),
+                )
+              : const SizedBox(width: 48),
+
+          // Current view title
+          Text(
+            _getCurrentViewTitle(),
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.green[700],
+            ),
+          ),
+
+          // Right arrow
+          _currentView < 1 // Only 2 views now
+              ? IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _currentView++;
+                    });
+                  },
+                  icon: const Icon(
+                    Icons.arrow_forward_ios,
+                    color: Colors.green,
+                  ),
+                )
+              : const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCustomTabs() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Column(
+        children: [
+          // Tab buttons
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _selectedTab = 0;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    decoration: BoxDecoration(
+                      color: _selectedTab == 0
+                          ? Colors.green[700]
+                          : Colors.grey[200],
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8.0),
+                        bottomLeft: Radius.circular(8.0),
+                      ),
+                      border: Border.all(
+                        color: _selectedTab == 0
+                            ? Colors.green[700]!
+                            : Colors.grey[300]!,
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      'All',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _selectedTab == 0 ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    setState(() {
+                      _selectedTab = 1;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                    decoration: BoxDecoration(
+                      color: _selectedTab == 1
+                          ? Colors.green[700]
+                          : Colors.grey[200],
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(8.0),
+                        bottomRight: Radius.circular(8.0),
+                      ),
+                      border: Border.all(
+                        color: _selectedTab == 1
+                            ? Colors.green[700]!
+                            : Colors.grey[300]!,
+                        width: 1.0,
+                      ),
+                    ),
+                    child: Text(
+                      'Course',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: _selectedTab == 1 ? Colors.white : Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          // Course dropdown (only show when Course tab is selected)
+          if (_selectedTab == 1) ...[
+            const SizedBox(height: 12),
+            Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.grey[300]!),
+                borderRadius: BorderRadius.circular(8.0),
+                color: Colors.white,
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  isExpanded: true,
+                  value: _selectedCourse,
+                  hint: const Text('Select a course'),
+                  icon: Icon(Icons.arrow_drop_down, color: Colors.green[700]),
+                  items: _savedCourses.map((course) {
+                    return DropdownMenuItem<String>(
+                      value: course.name,
+                      child: Text(
+                        course.name,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (String? newValue) {
+                    setState(() {
+                      _selectedCourse = newValue;
+                    });
+                    // Force rebuild to ensure filtering takes effect
+                    Future.delayed(Duration.zero, () {
+                      if (mounted) setState(() {});
+                    });
+                  },
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _getCurrentViewTitle() {
+    switch (_currentView) {
+      case 0:
+        return 'Last Ten';
+      case 1:
+        return 'Lifetime';
+      default:
+        return 'Last Ten';
+    }
+  }
+
+  Widget _buildTabContent({required bool isCourseFocused}) {
+    switch (_currentView) {
+      case 0:
+        return _buildSavedRoundsContent(
+          title: 'Last Ten Rounds',
+          isLastTen: true,
+          isCourseFocused: isCourseFocused,
+          selectedCourse: isCourseFocused ? _selectedCourse : null,
+        );
+      case 1:
+        return _buildSavedRoundsContent(
+          title: 'Lifetime Statistics',
+          isLastTen: false,
+          isCourseFocused: isCourseFocused,
+          selectedCourse: isCourseFocused ? _selectedCourse : null,
+        );
+      default:
+        return _buildComingSoonContent(
+          title: 'Statistics',
+          subtitle: 'Coming soon!',
+          icon: Icons.analytics,
+        );
+    }
+  }
+
+  Widget _buildSavedRoundsContent({
+    required String title,
+    required bool isLastTen,
+    required bool isCourseFocused,
+    String? selectedCourse,
+  }) {
+    return FutureBuilder<List<SavedRound>>(
+      future: StorageService.getSavedRounds(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error loading rounds: ${snapshot.error}',
+              style: const TextStyle(color: Colors.red),
+            ),
+          );
+        }
+
+        List<SavedRound> rounds = snapshot.data ?? [];
+
+        // Filter by course if needed
+        if (isCourseFocused &&
+            selectedCourse != null &&
+            selectedCourse.isNotEmpty) {
+          rounds = rounds
+              .where((round) =>
+                  round.courseName.toLowerCase() ==
+                  selectedCourse.toLowerCase())
+              .toList();
+        }
+
+        // Sort by date (most recent first)
+        rounds.sort((a, b) => b.dateTime.compareTo(a.dateTime));
+
+        // Limit to last 10 if needed
+        if (isLastTen && rounds.length > 10) {
+          rounds = rounds.take(10).toList();
+        }
+
+        if (rounds.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  isLastTen ? Icons.history : Icons.analytics,
+                  size: 64,
+                  color: Colors.grey,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  isCourseFocused && selectedCourse != null
+                      ? 'No rounds found for "$selectedCourse"'
+                      : 'No saved rounds yet',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            ),
+          );
+        }
+
+        // Calculate comprehensive statistics from the rounds
+        return _buildStatsFromRounds(
+            rounds, title, isCourseFocused, selectedCourse);
+      },
+    );
+  }
+
+  Widget _buildStatsFromRounds(List<SavedRound> rounds, String title,
+      bool isCourseFocused, String? selectedCourse) {
+    // Calculate aggregate statistics
+    int totalStrokes = 0;
+    int totalPar = 0;
+    int totalPutts = 0;
+    int holesPlayed = 0;
+    int firHits = 0;
+    int firAttempts = 0;
+    int girHits = 0;
+    int girAttempts = 0;
+    int eagles = 0;
+    int birdies = 0;
+    int pars = 0;
+    int bogeys = 0;
+    int doubleBogeys = 0;
+    int holesInOne = 0;
+
+    for (final round in rounds) {
+      for (final hole in round.holes) {
+        final strokes = int.tryParse(hole.strokes);
+        final par = int.tryParse(hole.par);
+        final putts = int.tryParse(hole.putts);
+
+        if (strokes != null && strokes > 0 && par != null && par > 0) {
+          totalStrokes += strokes;
+          totalPar += par;
+          holesPlayed++;
+
+          // Calculate score relative to par
+          final toPar = strokes - par;
+          if (strokes == 1) {
+            holesInOne++;
+          } else if (toPar <= -2) {
+            eagles++;
+          } else if (toPar == -1) {
+            birdies++;
+          } else if (toPar == 0) {
+            pars++;
+          } else if (toPar == 1) {
+            bogeys++;
+          } else if (toPar >= 2) {
+            doubleBogeys++;
+          }
+
+          // FIR calculation (only for par 4 and 5)
+          if (par >= 4) {
+            firAttempts++;
+            if (hole.fir == 'Yes') {
+              firHits++;
+            }
+          }
+
+          // GIR calculation
+          girAttempts++;
+          if (hole.gir == 'Yes') {
+            girHits++;
+          }
+
+          // Putts calculation
+          if (putts != null && putts > 0) {
+            totalPutts += putts;
+          }
+        }
+      }
+    }
+
+    final double scoring = holesPlayed > 0 ? totalStrokes / holesPlayed : 0.0;
+    final double putting = holesPlayed > 0 ? totalPutts / holesPlayed : 0.0;
+    final double firPercentage =
+        firAttempts > 0 ? (firHits / firAttempts) * 100 : 0.0;
+    final double girPercentage =
+        girAttempts > 0 ? (girHits / girAttempts) * 100 : 0.0;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Title with course info
+          Text(
+            '$title${isCourseFocused && selectedCourse != null ? ' - $selectedCourse' : ''}',
+            style: const TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          Text(
+            '${rounds.length} round${rounds.length != 1 ? 's' : ''} • $holesPlayed holes played',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Score Summary
+          _buildStatCard(
+            title: 'Score Summary',
+            stats: [
+              StatItem('Rounds Played', '${rounds.length}'),
+              StatItem('Holes Played', '$holesPlayed'),
+              StatItem('Total Strokes', '$totalStrokes'),
+              StatItem('Total Par', '$totalPar'),
+              StatItem(
+                'Score to Par',
+                totalStrokes > 0
+                    ? '${totalStrokes - totalPar > 0 ? '+' : ''}${totalStrokes - totalPar}'
+                    : '0',
+              ),
+              StatItem(
+                'Scoring Average',
+                holesPlayed > 0 ? scoring.toStringAsFixed(2) : '0.00',
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Hole Performance
+          _buildStatCard(
+            title: 'Hole Performance',
+            stats: [
+              StatItem('Holes in One', '$holesInOne'),
+              StatItem('Eagles+', '$eagles'),
+              StatItem('Birdies', '$birdies'),
+              StatItem('Pars', '$pars'),
+              StatItem('Bogeys', '$bogeys'),
+              StatItem('Double+', '$doubleBogeys'),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Course Management
+          _buildStatCard(
+            title: 'Course Management',
+            stats: [
+              StatItem('Fairways Hit', '$firHits/$firAttempts'),
+              StatItem(
+                'FIR %',
+                firAttempts > 0
+                    ? '${firPercentage.toStringAsFixed(1)}%'
+                    : '0.0%',
+              ),
+              StatItem('Greens Hit', '$girHits/$girAttempts'),
+              StatItem(
+                'GIR %',
+                girAttempts > 0
+                    ? '${girPercentage.toStringAsFixed(1)}%'
+                    : '0.0%',
+              ),
+              StatItem('Total Putts', '$totalPutts'),
+              StatItem(
+                'Putting Avg',
+                holesPlayed > 0 ? putting.toStringAsFixed(2) : '0.00',
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Recent Rounds
+          _buildStatCard(
+            title: 'Recent Rounds',
+            stats: [],
+            customContent: Column(
+              children: [
+                ...rounds.take(5).map((round) {
+                  final totalScore = round.holes.fold<int>(0,
+                      (sum, hole) => sum + (int.tryParse(hole.strokes) ?? 0));
+                  final totalPar = round.holes.fold<int>(
+                      0, (sum, hole) => sum + (int.tryParse(hole.par) ?? 0));
+                  final scoreVsPar = totalScore - totalPar;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: scoreVsPar < 0
+                            ? Colors.green
+                            : scoreVsPar == 0
+                                ? Colors.blue
+                                : Colors.red,
+                        child: Text(
+                          scoreVsPar < 0
+                              ? '$scoreVsPar'
+                              : scoreVsPar == 0
+                                  ? 'E'
+                                  : '+$scoreVsPar',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        round.courseName,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        '${round.dateTime.day}/${round.dateTime.month}/${round.dateTime.year}',
+                      ),
+                      trailing: Text(
+                        '$totalScore',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                RoundDetailScreen(round: round),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                }).toList(),
+                if (rounds.length > 5) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AllRoundsScreen(
+                            rounds: rounds,
+                            title:
+                                '$title${isCourseFocused && selectedCourse != null ? ' - $selectedCourse' : ''}',
+                          ),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.list),
+                    label: Text('View All ${rounds.length} Rounds'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.green[700],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComingSoonContent({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            icon,
+            size: 80,
+            color: Colors.grey[400],
+          ),
+          const SizedBox(height: 24),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              fontSize: 18,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard({
+    required String title,
+    required List<StatItem> stats,
+    Widget? customContent,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8.0),
+        border: Border.all(color: Colors.grey.shade300),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withValues(alpha: 0.1),
+            spreadRadius: 1,
+            blurRadius: 3,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          if (customContent != null)
+            customContent
+          else
+            ...stats.map(
+              (stat) => Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(stat.label, style: const TextStyle(fontSize: 16)),
+                    Text(
+                      stat.value,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// Round Detail Screen for viewing completed round stats
+class RoundDetailScreen extends StatelessWidget {
+  final SavedRound round;
+
+  const RoundDetailScreen({super.key, required this.round});
+
+  @override
+  Widget build(BuildContext context) {
+    final totalScore = round.holes
+        .fold<int>(0, (sum, hole) => sum + (int.tryParse(hole.strokes) ?? 0));
+    final totalPar = round.holes
+        .fold<int>(0, (sum, hole) => sum + (int.tryParse(hole.par) ?? 0));
+    final scoreVsPar = totalScore - totalPar;
+
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        title: Text(round.courseName),
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Round Summary Card
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Round Summary',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Date',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              '${round.dateTime.day}/${round.dateTime.month}/${round.dateTime.year}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Total Score',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              '$totalScore',
+                              style: const TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Par',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                            Text(
+                              '$totalPar',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              'Score vs Par',
+                              style: TextStyle(
+                                color: Colors.grey[600],
+                                fontSize: 14,
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scoreVsPar < 0
+                                    ? Colors.green
+                                    : scoreVsPar == 0
+                                        ? Colors.blue
+                                        : Colors.red,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                scoreVsPar < 0
+                                    ? '$scoreVsPar'
+                                    : scoreVsPar == 0
+                                        ? 'E'
+                                        : '+$scoreVsPar',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // Scorecard
+            Text(
+              'Scorecard',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // Header row
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.green[50],
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: const [
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'Hole',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'Par',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'Score',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'Putts',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'FIR',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 1,
+                            child: Text(
+                              'GIR',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    // Data rows
+                    ...round.holes.asMap().entries.map((entry) {
+                      final index = entry.key;
+                      final hole = entry.value;
+                      final holeNumber = index + 1;
+                      final par = int.tryParse(hole.par) ?? 0;
+                      final strokes = int.tryParse(hole.strokes) ?? 0;
+                      final holeScore = strokes - par;
+
+                      return Container(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          color:
+                              index % 2 == 1 ? Colors.grey[100] : Colors.white,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                '$holeNumber',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                hole.par,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                hole.strokes,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: holeScore < 0
+                                      ? Colors.green
+                                      : holeScore == 0
+                                          ? Colors.black
+                                          : Colors.red,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                hole.putts.isEmpty ? '-' : hole.putts,
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                hole.fir == 'Yes'
+                                    ? '✓'
+                                    : hole.fir == 'No'
+                                        ? '✗'
+                                        : '-',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: hole.fir == 'Yes'
+                                      ? Colors.green
+                                      : hole.fir == 'No'
+                                          ? Colors.red
+                                          : Colors.grey,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 1,
+                              child: Text(
+                                hole.gir == 'Yes'
+                                    ? '✓'
+                                    : hole.gir == 'No'
+                                        ? '✗'
+                                        : '-',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: hole.gir == 'Yes'
+                                      ? Colors.green
+                                      : hole.gir == 'No'
+                                          ? Colors.red
+                                          : Colors.grey,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// All Rounds Screen for viewing all saved rounds with scorecards
+class AllRoundsScreen extends StatelessWidget {
+  final List<SavedRound> rounds;
+  final String title;
+
+  const AllRoundsScreen({
+    super.key,
+    required this.rounds,
+    required this.title,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.green[700],
+        foregroundColor: Colors.white,
+        title: Text(title),
+        centerTitle: true,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'All Rounds (${rounds.length})',
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tap any round to view detailed scorecard',
+              style: TextStyle(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView.builder(
+                itemCount: rounds.length,
+                itemBuilder: (context, index) {
+                  final round = rounds[index];
+                  final totalScore = round.holes.fold<int>(0,
+                      (sum, hole) => sum + (int.tryParse(hole.strokes) ?? 0));
+                  final totalPar = round.holes.fold<int>(
+                      0, (sum, hole) => sum + (int.tryParse(hole.par) ?? 0));
+                  final scoreVsPar = totalScore - totalPar;
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
+                    child: ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: scoreVsPar < 0
+                            ? Colors.green
+                            : scoreVsPar == 0
+                                ? Colors.blue
+                                : Colors.red,
+                        child: Text(
+                          scoreVsPar < 0
+                              ? '$scoreVsPar'
+                              : scoreVsPar == 0
+                                  ? 'E'
+                                  : '+$scoreVsPar',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      title: Text(
+                        round.courseName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        '${round.dateTime.day}/${round.dateTime.month}/${round.dateTime.year}',
+                      ),
+                      trailing: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '$totalScore',
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            'Par $totalPar',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                RoundDetailScreen(round: round),
+                          ),
+                        );
+                      },
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

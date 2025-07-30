@@ -21,15 +21,24 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _checkForRoundInProgress();
+    _initializeDefaultCourses(); // NEW: Create sample courses on first run
   }
 
   Future<void> _checkForRoundInProgress() async {
     final hasRound = await StorageService.hasRoundInProgress();
-    print('DEBUG: hasRoundInProgress = $hasRound'); // Debug line
     setState(() {
       _hasRoundInProgress = hasRound;
       _isLoading = false;
     });
+  }
+
+  // NEW: Create default courses on first app launch
+  Future<void> _initializeDefaultCourses() async {
+    try {
+      await StorageService.createDefaultCourses();
+    } catch (e) {
+      // Removed debug print for production
+    }
   }
 
   Future<void> _startNewRound() async {
@@ -100,7 +109,7 @@ class _HomeScreenState extends State<HomeScreen> {
           icon: const Icon(Icons.settings),
           onPressed: () {},
         ),
-        title: const Text('Golf App'),
+        title: const Text('Golflytics'),
         centerTitle: true,
         actions: [
           IconButton(
@@ -117,7 +126,35 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    valueColor:
+                        AlwaysStoppedAnimation<Color>(Colors.green[700]!),
+                    strokeWidth: 3,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Loading Golflytics...',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.green[700],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Preparing your golf data',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            )
           : Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32.0),
               child: Column(
@@ -161,6 +198,19 @@ class _HomeScreenState extends State<HomeScreen> {
                     },
                   ),
                   const SizedBox(height: 16),
+                  _buildMenuButton(
+                    context,
+                    text: 'Saved Stats',
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SavedStatsScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
                 ],
               ),
             ),
@@ -173,9 +223,26 @@ class _HomeScreenState extends State<HomeScreen> {
     if (courses.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No saved courses available. Create a course first!'),
-            backgroundColor: Colors.orange,
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.info_outline, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'No saved courses available. Create a course first!',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.orange[600],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.all(16),
+            duration: const Duration(seconds: 4),
           ),
         );
       }
@@ -186,7 +253,19 @@ class _HomeScreenState extends State<HomeScreen> {
       final selectedCourse = await showDialog<SavedCourse>(
         context: context,
         builder: (context) => AlertDialog(
-          title: const Text('Select a Course'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Icon(Icons.golf_course, color: Colors.green[700]),
+              const SizedBox(width: 12),
+              const Text(
+                'Select a Course',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
           content: SizedBox(
             width: double.maxFinite,
             child: courses.length > 5
@@ -208,6 +287,11 @@ class _HomeScreenState extends State<HomeScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[600],
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
               child: const Text('Cancel'),
             ),
           ],
@@ -221,12 +305,73 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildCourseListTile(SavedCourse course) {
-    return ListTile(
-      title: Text(course.name),
-      subtitle: Text(
-          'Par ${course.totalPar} • Last played: ${_formatDate(course.lastPlayed)}'),
-      trailing: const Icon(Icons.arrow_forward_ios),
-      onTap: () => Navigator.of(context).pop(course),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(color: Colors.grey.shade200),
+        ),
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.green[100],
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            Icons.golf_course,
+            color: Colors.green[700],
+            size: 24,
+          ),
+        ),
+        title: Text(
+          course.name,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 16,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Row(
+            children: [
+              Icon(Icons.flag, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  'Par ${course.totalPar}',
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text(
+                  _formatDate(course.lastPlayed),
+                  style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.green[700],
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: const Icon(
+            Icons.play_arrow,
+            color: Colors.white,
+            size: 20,
+          ),
+        ),
+        onTap: () => Navigator.of(context).pop(course),
+      ),
     );
   }
 
@@ -271,18 +416,50 @@ class _HomeScreenState extends State<HomeScreen> {
     required VoidCallback onPressed,
     Color? backgroundColor,
   }) {
-    return ElevatedButton(
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        backgroundColor: backgroundColor ?? Colors.green,
-        foregroundColor: Colors.white,
-        padding: const EdgeInsets.symmetric(vertical: 20),
-        textStyle: const TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: backgroundColor ?? Colors.green[700],
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 32),
+          elevation: 3,
+          shadowColor: Colors.black26,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 0.5,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            if (text.contains('🏌️')) ...[
+              const Icon(Icons.play_arrow, size: 24),
+              const SizedBox(width: 8),
+            ] else if (text.contains('New')) ...[
+              const Icon(Icons.add_circle_outline, size: 24),
+              const SizedBox(width: 8),
+            ] else if (text.contains('Play Saved')) ...[
+              const Icon(Icons.golf_course, size: 24),
+              const SizedBox(width: 8),
+            ] else if (text.contains('Manage')) ...[
+              const Icon(Icons.settings_outlined, size: 24),
+              const SizedBox(width: 8),
+            ],
+            Flexible(
+              child: Text(
+                text.replaceAll('🏌️ ', ''),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ],
         ),
       ),
-      child: Text(text),
     );
   }
 }

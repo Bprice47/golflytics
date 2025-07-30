@@ -58,7 +58,8 @@ class StorageService {
       await prefs.setString(_coursesKey, jsonEncode(coursesJson));
       return true;
     } catch (e) {
-      print('Error saving course: $e');
+      // Log error for debugging, but don't print in production
+      // // Removed debug print: 'Error saving course: $e'
       return false;
     }
   }
@@ -74,7 +75,7 @@ class StorageService {
       final coursesList = jsonDecode(coursesString) as List;
       return coursesList.map((json) => SavedCourse.fromJson(json)).toList();
     } catch (e) {
-      print('Error loading courses: $e');
+      // Removed debug print: 'Error loading courses: $e'
       return [];
     }
   }
@@ -134,7 +135,7 @@ class StorageService {
         return await saveCourse(updatedCourse);
       }
     } catch (e) {
-      print('Error auto-saving course: $e');
+      // Removed debug print: 'Error auto-saving course: $e'
       return false;
     }
   }
@@ -150,7 +151,7 @@ class StorageService {
       await prefs.setString(_coursesKey, jsonEncode(coursesJson));
       return true;
     } catch (e) {
-      print('Error deleting course: $e');
+      // Removed debug print: 'Error deleting course: $e'
       return false;
     }
   }
@@ -183,7 +184,7 @@ class StorageService {
 
       return true;
     } catch (e) {
-      print('Error saving round: $e');
+      // Removed debug print: 'Error saving round: $e'
       return false;
     }
   }
@@ -199,7 +200,7 @@ class StorageService {
       final roundsList = jsonDecode(roundsString) as List;
       return roundsList.map((json) => SavedRound.fromJson(json)).toList();
     } catch (e) {
-      print('Error loading rounds: $e');
+      // Removed debug print: 'Error loading rounds: $e'
       return [];
     }
   }
@@ -215,7 +216,7 @@ class StorageService {
       await prefs.setString(_roundsKey, jsonEncode(roundsJson));
       return true;
     } catch (e) {
-      print('Error deleting round: $e');
+      // Removed debug print: 'Error deleting round: $e'
       return false;
     }
   }
@@ -227,7 +228,7 @@ class StorageService {
       await prefs.remove(_roundsKey);
       return true;
     } catch (e) {
-      print('Error clearing rounds: $e');
+      // Removed debug print: 'Error clearing rounds: $e'
       return false;
     }
   }
@@ -261,7 +262,7 @@ class StorageService {
       await prefs.setString(_currentRoundKey, jsonEncode(currentRoundData));
       return true;
     } catch (e) {
-      print('Error saving current round: $e');
+      // Removed debug print: 'Error saving current round: $e'
       return false;
     }
   }
@@ -295,7 +296,7 @@ class StorageService {
         'lastSaved': currentRoundData['lastSaved'] ?? '',
       };
     } catch (e) {
-      print('Error loading current round: $e');
+      // Removed debug print: 'Error loading current round: $e'
       return null;
     }
   }
@@ -306,7 +307,7 @@ class StorageService {
       final prefs = await SharedPreferences.getInstance();
       return prefs.containsKey(_currentRoundKey);
     } catch (e) {
-      print('Error checking for round in progress: $e');
+      // Removed debug print: 'Error checking for round in progress: $e'
       return false;
     }
   }
@@ -318,7 +319,99 @@ class StorageService {
       await prefs.remove(_currentRoundKey);
       return true;
     } catch (e) {
-      print('Error clearing current round: $e');
+      // Removed debug print: 'Error clearing current round: $e'
+      return false;
+    }
+  }
+
+  // NEW: Export all courses to JSON string for backup
+  static Future<String?> exportCourses() async {
+    try {
+      final courses = await getSavedCourses();
+      if (courses.isEmpty) return null;
+
+      final exportData = {
+        'version': '1.0',
+        'exportDate': DateTime.now().toIso8601String(),
+        'courses': courses.map((c) => c.toJson()).toList(),
+      };
+
+      return jsonEncode(exportData);
+    } catch (e) {
+      // Removed debug print: 'Error exporting courses: $e'
+      return null;
+    }
+  }
+
+  // NEW: Import courses from JSON string
+  static Future<bool> importCourses(String jsonData) async {
+    try {
+      final importData = jsonDecode(jsonData) as Map<String, dynamic>;
+      final coursesList = importData['courses'] as List;
+      final courses =
+          coursesList.map((json) => SavedCourse.fromJson(json)).toList();
+
+      // Get existing courses
+      final existingCourses = await getSavedCourses();
+
+      // Merge courses (keep existing, add new ones)
+      for (final newCourse in courses) {
+        final existsIndex = existingCourses.indexWhere((existing) =>
+            existing.name.toLowerCase() == newCourse.name.toLowerCase());
+
+        if (existsIndex >= 0) {
+          // Update existing course with newer data
+          existingCourses[existsIndex] = newCourse;
+        } else {
+          // Add new course
+          existingCourses.add(newCourse);
+        }
+      }
+
+      // Save merged courses
+      final prefs = await SharedPreferences.getInstance();
+      final coursesJson = existingCourses.map((c) => c.toJson()).toList();
+      await prefs.setString(_coursesKey, jsonEncode(coursesJson));
+
+      return true;
+    } catch (e) {
+      // Removed debug print: 'Error importing courses: $e'
+      return false;
+    }
+  }
+
+  // NEW: Create default courses for first-time users
+  static Future<bool> createDefaultCourses() async {
+    try {
+      final existingCourses = await getSavedCourses();
+      if (existingCourses.isNotEmpty) return false; // Already has courses
+
+      final defaultCourses = [
+        SavedCourse(
+          id: 'default_1',
+          name: 'Sample Course - Easy',
+          pars: [4, 4, 3, 5, 4, 3, 4, 5, 4, 4, 4, 3, 5, 4, 3, 4, 5, 4],
+          dateCreated: DateTime.now(),
+          lastPlayed: DateTime.now(),
+          timesPlayed: 0,
+        ),
+        SavedCourse(
+          id: 'default_2',
+          name: 'Sample Course - Championship',
+          pars: [4, 5, 3, 4, 4, 3, 5, 4, 4, 4, 5, 3, 4, 4, 3, 5, 4, 4],
+          dateCreated: DateTime.now(),
+          lastPlayed: DateTime.now(),
+          timesPlayed: 0,
+        ),
+      ];
+
+      for (final course in defaultCourses) {
+        await saveCourse(course);
+      }
+
+      return true;
+    } catch (e) {
+      // Removed debug print: 'Error creating default courses: $e'
       return false;
     }
   }

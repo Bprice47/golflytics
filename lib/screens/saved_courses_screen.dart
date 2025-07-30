@@ -236,176 +236,293 @@ class _SavedCoursesScreenState extends State<SavedCoursesScreen> {
       ),
     );
 
+    // Create focus nodes for auto-advance
+    final nameFocusNode = FocusNode();
+    final parFocusNodes = List.generate(18, (_) => FocusNode());
+
+    // Helper function to safely dispose focus nodes
+    void disposeFocusNodes() {
+      // Use post frame callback to ensure proper timing
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        try {
+          // Unfocus all nodes first
+          for (final focusNode in parFocusNodes) {
+            if (focusNode.hasFocus) {
+              focusNode.unfocus();
+            }
+          }
+          if (nameFocusNode.hasFocus) {
+            nameFocusNode.unfocus();
+          }
+
+          // Small delay before disposal
+          Future.delayed(const Duration(milliseconds: 200), () {
+            try {
+              nameFocusNode.dispose();
+              for (final focusNode in parFocusNodes) {
+                focusNode.dispose();
+              }
+            } catch (e) {
+              // Ignore disposal errors - this prevents the framework assertion
+              print('Focus node disposal error (safe to ignore): $e');
+            }
+          });
+        } catch (e) {
+          // Ignore errors
+        }
+      });
+    }
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(existingCourse == null ? 'Add New Course' : 'Edit Course'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Course Name',
-                  border: OutlineInputBorder(),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title:
+              Text(existingCourse == null ? 'Add New Course' : 'Edit Course'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  focusNode: nameFocusNode,
+                  decoration: const InputDecoration(
+                    labelText: 'Course Name',
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.next,
+                  onSubmitted: (_) {
+                    // Move to first hole par entry
+                    Future.delayed(const Duration(milliseconds: 50), () {
+                      if (parFocusNodes.isNotEmpty &&
+                          parFocusNodes[0].canRequestFocus) {
+                        parFocusNodes[0].requestFocus();
+                      }
+                    });
+                  },
                 ),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'Enter Par for Each Hole:',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      // Front 9
-                      const Text(
-                        'Front 9',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 2,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
+                const SizedBox(height: 16),
+                const Text(
+                  'Enter Par for Each Hole:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        // Front 9
+                        const Text(
+                          'Front 9',
+                          style: TextStyle(fontWeight: FontWeight.w600),
                         ),
-                        itemCount: 9,
-                        itemBuilder: (context, index) {
-                          return TextField(
-                            controller: parControllers[index],
-                            decoration: InputDecoration(
-                              labelText: 'Hole ${index + 1}',
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
+                        const SizedBox(height: 8),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 2,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                          itemCount: 9,
+                          itemBuilder: (context, index) {
+                            return TextField(
+                              controller: parControllers[index],
+                              focusNode: parFocusNodes[index],
+                              decoration: InputDecoration(
+                                labelText: 'Hole ${index + 1}',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                               ),
-                            ),
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      // Back 9
-                      const Text(
-                        'Back 9',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate:
-                            const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          childAspectRatio: 2,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              textInputAction: TextInputAction.next,
+                              onSubmitted: (_) {
+                                // Auto-advance to next hole
+                                if (index < 17) {
+                                  if (parFocusNodes[index + 1]
+                                      .canRequestFocus) {
+                                    parFocusNodes[index + 1].requestFocus();
+                                  }
+                                } else {
+                                  // Last hole, unfocus
+                                  FocusScope.of(context).unfocus();
+                                }
+                              },
+                              onChanged: (value) {
+                                // Auto-advance when valid par is entered
+                                if (value.isNotEmpty &&
+                                    int.tryParse(value) != null &&
+                                    int.parse(value) >= 3 &&
+                                    int.parse(value) <= 6) {
+                                  if (index < 17) {
+                                    if (parFocusNodes[index + 1]
+                                        .canRequestFocus) {
+                                      parFocusNodes[index + 1].requestFocus();
+                                    }
+                                  } else {
+                                    FocusScope.of(context).unfocus();
+                                  }
+                                }
+                              },
+                            );
+                          },
                         ),
-                        itemCount: 9,
-                        itemBuilder: (context, index) {
-                          final holeNumber = index + 10;
-                          return TextField(
-                            controller: parControllers[index + 9],
-                            decoration: InputDecoration(
-                              labelText: 'Hole $holeNumber',
-                              border: const OutlineInputBorder(),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
+                        const SizedBox(height: 16),
+                        // Back 9
+                        const Text(
+                          'Back 9',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 8),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 3,
+                            childAspectRatio: 2,
+                            crossAxisSpacing: 8,
+                            mainAxisSpacing: 8,
+                          ),
+                          itemCount: 9,
+                          itemBuilder: (context, index) {
+                            final holeNumber = index + 10;
+                            final controllerIndex = index + 9;
+                            return TextField(
+                              controller: parControllers[controllerIndex],
+                              focusNode: parFocusNodes[controllerIndex],
+                              decoration: InputDecoration(
+                                labelText: 'Hole $holeNumber',
+                                border: const OutlineInputBorder(),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                               ),
-                            ),
-                            keyboardType: TextInputType.number,
-                            textAlign: TextAlign.center,
-                          );
-                        },
-                      ),
-                    ],
+                              keyboardType: TextInputType.number,
+                              textAlign: TextAlign.center,
+                              textInputAction: TextInputAction.next,
+                              onSubmitted: (_) {
+                                // Auto-advance to next hole
+                                if (controllerIndex < 17) {
+                                  if (parFocusNodes[controllerIndex + 1]
+                                      .canRequestFocus) {
+                                    parFocusNodes[controllerIndex + 1]
+                                        .requestFocus();
+                                  }
+                                } else {
+                                  // Last hole, unfocus
+                                  FocusScope.of(context).unfocus();
+                                }
+                              },
+                              onChanged: (value) {
+                                // Auto-advance when valid par is entered
+                                if (value.isNotEmpty &&
+                                    int.tryParse(value) != null &&
+                                    int.parse(value) >= 3 &&
+                                    int.parse(value) <= 6) {
+                                  if (controllerIndex < 17) {
+                                    if (parFocusNodes[controllerIndex + 1]
+                                        .canRequestFocus) {
+                                      parFocusNodes[controllerIndex + 1]
+                                          .requestFocus();
+                                    }
+                                  } else {
+                                    FocusScope.of(context).unfocus();
+                                  }
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final name = nameController.text.trim();
-              if (name.isEmpty) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Please enter a course name'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
-                return;
-              }
-
-              final pars = <int>[];
-              for (final controller in parControllers) {
-                final par = int.tryParse(controller.text);
-                if (par == null || par < 3 || par > 6) {
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final name = nameController.text.trim();
+                if (name.isEmpty) {
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(
-                      content: Text(
-                          'Please enter valid par values (3-6) for all holes'),
+                      content: Text('Please enter a course name'),
                       backgroundColor: Colors.red,
                     ),
                   );
                   return;
                 }
-                pars.add(par);
-              }
 
-              final course = SavedCourse(
-                id: existingCourse?.id ??
-                    DateTime.now().millisecondsSinceEpoch.toString(),
-                name: name,
-                pars: pars,
-                dateCreated: existingCourse?.dateCreated ?? DateTime.now(),
-                lastPlayed: existingCourse?.lastPlayed ?? DateTime.now(),
-                timesPlayed: existingCourse?.timesPlayed ?? 0,
-              );
+                final pars = <int>[];
+                for (final controller in parControllers) {
+                  final par = int.tryParse(controller.text);
+                  if (par == null || par < 3 || par > 6) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                            'Please enter valid par values (3-6) for all holes'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+                  pars.add(par);
+                }
 
-              final success = await StorageService.saveCourse(course);
-
-              if (mounted) {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(success
-                        ? '✅ Course ${existingCourse == null ? 'added' : 'updated'} successfully!'
-                        : '❌ Failed to ${existingCourse == null ? 'add' : 'update'} course'),
-                    backgroundColor: success ? Colors.green : Colors.red,
-                  ),
+                final course = SavedCourse(
+                  id: existingCourse?.id ??
+                      DateTime.now().millisecondsSinceEpoch.toString(),
+                  name: name,
+                  pars: pars,
+                  dateCreated: existingCourse?.dateCreated ?? DateTime.now(),
+                  lastPlayed: existingCourse?.lastPlayed ?? DateTime.now(),
+                  timesPlayed: existingCourse?.timesPlayed ?? 0,
                 );
-                if (success) setState(() {});
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green[700],
-              foregroundColor: Colors.white,
+
+                final success = await StorageService.saveCourse(course);
+
+                if (mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(success
+                          ? '✅ Course ${existingCourse == null ? 'added' : 'updated'} successfully!'
+                          : '❌ Failed to ${existingCourse == null ? 'add' : 'update'} course'),
+                      backgroundColor: success ? Colors.green : Colors.red,
+                    ),
+                  );
+                  if (success) setState(() {});
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[700],
+                foregroundColor: Colors.white,
+              ),
+              child:
+                  Text(existingCourse == null ? 'Add Course' : 'Update Course'),
             ),
-            child:
-                Text(existingCourse == null ? 'Add Course' : 'Update Course'),
-          ),
-        ],
+          ],
+        ),
       ),
-    );
+    ).then((_) {
+      // Dispose focus nodes when dialog is closed
+      disposeFocusNodes();
+    });
   }
 
   void _showDeleteCourseDialog(SavedCourse course) {
